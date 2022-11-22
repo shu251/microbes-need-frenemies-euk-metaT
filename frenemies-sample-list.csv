@@ -1,0 +1,45 @@
+﻿LAB_NUM,i5 index,i7 index,SITE_NUM_FIELDYR_VENT_EXP_SAMPLEID,SITE,NUM,FIELDYR,VENT,EXP,SAMPLEID,SAMPLE_NAME,ORIGIN,300-600 bp; ng/ul post PCR repeats,total cycles with additions
+103,i504,i701,AXIAL_103_Axial2022_IntlDistrictPlumePeak_insitu_CTD005,AXIAL,103,Axial2022,IntlDistrictPlumePeak,insitu,CTD005,Intl District plume,Niskin 22,0.89178,20
+104,i503,i703,AXIAL_104_Axial2022_IntlDistrictPlumePeak_insitu_CTD005,AXIAL,104,Axial2022,IntlDistrictPlumePeak,insitu,CTD005,Intl District plume,Niskin 22,5.55979,20
+105,i504,i702,AXIAL_105_Axial2022_Anemone_insitu_1434HSF15,AXIAL,105,Axial2022,Anemone,insitu,1434HSF15,Anemone,filter,6.19251,18
+106,i504,i703,AXIAL_106_Axial2022_IntlDistrictPlumeBottom_insitu_CTD005,AXIAL,106,Axial2022,IntlDistrictPlumeBottom,insitu,CTD005,Intl District plume bottom,Niskin 1,6.42653,18
+107,i504,i704,AXIAL_107_Axial2022_IntlDistrictPlumeTop_insitu_CTD005,AXIAL,107,Axial2022,IntlDistrictPlumeTop,insitu,CTD005,Intl District plume top,Niskin 23,3.79433,18
+108,i503,i704,AXIAL_108_Axial2022_IntlDistrictPlus30m_insitu_CTD005,AXIAL,108,Axial2022,IntlDistrictPlus30m,insitu,CTD005,Intl District plume +30m above top,Niskin 24,6.90105,20
+109,i503,i705,AXIAL_109_Axial2022_Background_insitu_CTD006,AXIAL,109,Axial2022,Background,insitu,CTD006,Background seawater,,21.3376,20
+110,i503,i706,AXIAL_110_Axial2022_Background_insitu_CTD006,AXIAL,110,Axial2022,Background,insitu,CTD006,Background seawater,,5.98968,24
+111,i504,i705,AXIAL_111_Axial2022_ASHESplume_insitu_CTD003,AXIAL,111,Axial2022,ASHESplume,insitu,CTD003,ASHES plume,filter,1.47183,18
+112,i504,i706,AXIAL_112_Axial2022_ASHESplume_insitu_CTD003,AXIAL,112,Axial2022,ASHESplume,insitu,CTD003,ASHES plume,filter,1.18282,18
+113,i504,i707,AXIAL_113_Axial2022_Anemone_insitu_1434HSF6,AXIAL,113,Axial2022,Anemone,insitu,1434HSF6,Anemone,in situ RNA filter 13,1.92269,22
+114,i504,i708,AXIAL_114_Axial2022_Anemone_insitu_1434HSF7,AXIAL,114,Axial2022,Anemone,insitu,1434HSF7,Anemone,in situ RNA filter 14,1.14567,18
+115,i503,i707,AXIAL_115_Axial2022_Transit_insitu_1434HFS27,AXIAL,115,Axial2022,Transit,insitu,1434HFS27,"in transit sample, Hell --> Anemone",in situ RNA filter 15,0.28523,28
+6,i503,i708,AXIAL_6_Axial2013_Anemone_insitu_Anemone,AXIAL,6,Axial2013,Anemone,insitu,Anemone,,archived RNA,3.54348,28
+36,i503,i702,GR_36_Gorda2019_BSW_insitu_BSW056,GR,36,Gorda2019,BSW,insitu,BSW056,Background seawater,,1.08155,20
+38,i503,i701,GR_38_Gorda2019_Plume_insitu_Plume096,GR,38,Gorda2019,Plume,insitu,Plume096,Mt Edwards Plume,,35.91313,20
+40,i503,i711,GR_40_Gorda2019_VentiLatte_insitu_Vent039,GR,40,Gorda2019,VentiLatte,insitu,Vent039,Venti Latte,,0.59134,26
+42,i502,i711,GR_42_Gorda2019_SirVentsAlot_insitu_Vent105,GR,42,Gorda2019,SirVentsAlot,insitu,Vent105,SirVentsAlot,,8.00435,24
+44,i503,i712,GR_44_Gorda2019_MtEdwards_insitu_Vent011,GR,44,Gorda2019,MtEdwards,insitu,Vent011,Mt Edwards,,1.38843,26
+47,i502,i712,GR_47_Gorda2019_Candelabra_insitu_Vent087,GR,47,Gorda2019,Candelabra,insitu,Vent087,Candelabra,,1.58769,20
+54,i501,i701,MCR_54_VonDamm2020_MustardStand_Tf_FLP,MCR,54,VonDamm2020,MustardStand,Tf,FLP,MustardStand,lab experiment,0.76156,16
+55,i501,i704,MCR_55_VonDamm2020_ShrimpHole_Tf_FLP,MCR,55,VonDamm2020,ShrimpHole,Tf,FLP,ShrimpHole,lab experiment,0.49124,20
+56,i501,i711,MCR_56_Piccard2020_Plume_Tf_FLP,MCR,56,Piccard2020,Plume,Tf,FLP,Plume_Piccard,lab experiment,1.19787,20
+57,i501,i705,MCR_57_Piccard2020_Shrimpocalypse_Tf_FLP,MCR,57,Piccard2020,Shrimpocalypse,Tf,FLP,Shrimpocalypse,lab experiment,0.30682,18
+58,i502,i701,MCR_58_VonDamm2020_Plume_Tf_FLP,MCR,58,VonDamm2020,Plume,Tf,FLP,Plume_VonDamm,lab experiment,1.64456,20
+59,i501,i706,MCR_59_VonDamm2020_X18_Tf_FLP,MCR,59,VonDamm2020,X18,Tf,FLP,X-18,lab experiment,0.99063,16
+60,i501,i709,MCR_60_VonDamm2020_Background_Tf_FLP,MCR,60,VonDamm2020,Background,Tf,FLP,BSW_VonDamm,lab experiment,5.07917,20
+61,i501,i707,MCR_61_VonDamm2020_Ravelin2_Tf_FLP,MCR,61,VonDamm2020,Ravelin2,Tf,FLP,Ravelin#2,lab experiment,0.96965,16
+63,i502,i703,MCR_63_VonDamm2020_Background_insitu_CTD002,MCR,63,VonDamm2020,Background,insitu,CTD002,BSW_VonDamm,in situ CTD,4.89115,20
+65,i501,i708,MCR_65_VonDamm2020_Plume_insitu_CTD003,MCR,65,VonDamm2020,Plume,insitu,CTD003,Plume_VonDamm,in situ CTD,1.08867,18
+66,i501,i712,MCR_66_VonDamm2020_ArrowLoop_insitu_1243,MCR,66,VonDamm2020,ArrowLoop,insitu,1243,Arrow Loop,in situ HOG,2.50659,28
+67,i502,i702,MCR_67_VonDamm2020_WhiteCastle_insitu_1235,MCR,67,VonDamm2020,WhiteCastle,insitu,1235,White Castle,in situ HOG,0.54655,20
+68,i501,i702,MCR_68_Piccard2020_Lotsoshrimp_insitu_1242,MCR,68,Piccard2020,Lotsoshrimp,insitu,1242,Lots o' shrimp,in situ HOG,2.10862,16
+69,i502,i709,MCR_69_VonDamm2020_MustardStand_insitu_1243,MCR,69,VonDamm2020,Mustard Stand,insitu,1243,Mustard Stand,in situ HOG,93.07137,20
+70,i502,i704,MCR_70_VonDamm2020_Ravelin2_insitu_1238,MCR,70,VonDamm2020,Ravelin2,insitu,1238,Ravelin #2,in situ HOG,3.47714,20
+71,i502,i705,MCR_71_VonDamm2020_OldManTree_insitu_1238,MCR,71,VonDamm2020,OldManTree,insitu,1238,Old Man Tree,in situ HOG,0.83381,22
+72,i501,i703,MCR_72_VonDamm2020_ShrimpHole_insitu_1244,MCR,72,VonDamm2020,ShrimpHole,insitu,1244,Shrimp Hole,in situ HOG,10.2277,20
+73,i502,i706,MCR_73_Piccard2020_Background_insitu_CTD005,MCR,73,Piccard2020,Background,insitu,CTD005,BSW_Piccard_A,in situ CTD,569.9876,20
+74,i502,i707,MCR_74_Piccard2020_Plume_insitu_CTD004,MCR,74,Piccard2020,Plume,insitu,CTD004,Plume_Piccard_A,in situ CTD,2.6364,20
+76,i502,i708,MCR_76_VonDamm2020_X18_insitu_1235,MCR,76,VonDamm2020,X18,insitu,1235,X-18,in situ HOG,1.18585,20
+77,i502,i710,MCR_77_Piccard2020_Shrimpocalypse_insitu_1240,MCR,77,Piccard2020,Shrimpocalypse,insitu,1240,Shrimpocalypse (Shrimp Gully),in situ HOG,7.56581,24
+78,i503,i709,MCR_78_Piccard2020_Lotsoshrimp_insitu_1241,MCR,78,Piccard2020,Lotsoshrimp,insitu,1241,Lots o' shrimp,in situ HOG,1.2547,26
+79,i501,i710,MCR_79_VonDamm2020_Bartizan_insitu_1244,MCR,79,VonDamm2020,Bartizan,insitu,1244,Bartizan,in situ HOG,0.51464,20
+80,i503,i710,MCR_80_VonDamm2020_Ravelin2_insitu_1244,MCR,80,VonDamm2020,Ravelin2,insitu,1244,Ravelin #2,in situ HOG,0.62584,26

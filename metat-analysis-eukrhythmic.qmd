@@ -1,0 +1,66 @@
+---
+title: "Frenemies-metaT-analysis"
+format: html
+editor: visual
+---
+
+## Set up environment
+
+```{r}
+#| message: false
+library(tidyverse)
+```
+
+Import .csv files for all samples names.
+```{r}
+#| echo: false
+sample_list <- read.csv("frenemies-sample-list.csv")
+fastq_list <- read.csv("frenemies-fastq-list.csv", header = FALSE)
+# View(sample_list)
+```
+
+Fastq files were run on both lanes 1 and 2. So will treat as replicates for now. Separate fastq_list file so we can left join the sample_list information.
+```{r}
+head(fastq_list)
+bg <- c("Plume", "plume", "Background", "background", "Transit, Plus30m")
+
+sample_list_wassemblygroup <- fastq_list %>% 
+  mutate(FastqFile = str_remove_all(V1, "_R1_001.fastq.gz"),
+         SampleName = str_remove_all(FastqFile, "_S\\d+_L00\\d+")) %>% 
+  left_join(sample_list %>% select(SampleName = SITE_NUM_FIELDYR_VENT_EXP_SAMPLEID, SampleID = "SAMPLEID", everything())) %>% 
+  mutate(VENT = case_when(
+    VENT == "Mustard Stand" ~ "MustardStand",
+    TRUE ~ VENT
+  )) %>% 
+  mutate(TYPE = case_when( #Option to use casewhen for setting assembly grouping
+  grepl("Plume", VENT) ~ "nonvent",
+  grepl("plume", VENT) ~ "nonvent",
+  grepl("Plus30m", VENT) ~ "nonvent",
+  grepl("BSW", VENT) ~ "nonvent",
+  grepl("Background", VENT) ~ "nonvent",
+  grepl("Transit", VENT) ~ "nonvent",
+  TRUE ~ "vent"
+    )) %>%
+  mutate(FIELD = case_when(
+    FIELDYR == "VonDamm2020" ~ "VONDAMM",
+    FIELDYR == "Piccard2020" ~ "PICCARD",
+    TRUE ~ SITE
+  )) %>% 
+  mutate(AXIAL_CORR = case_when(
+    grepl("IntlDistrict", VENT) ~ "IntlDistrict",
+    grepl("ASHES", VENT) ~ "ASHES",
+    grepl("Transit", VENT) ~ "Background",
+    TRUE ~ VENT
+  )) %>% 
+  mutate(AssemblyGroup = case_when(
+    SITE == "MCR" ~ paste(FIELD, VENT, TYPE, sep = "_"),
+    SITE == "GR" ~ paste(FIELD, FIELDYR, TYPE, sep = "_"),
+    SITE == "AXIAL" ~ paste(FIELD, AXIAL_CORR, TYPE, sep = "_")
+  )) %>% 
+  # unite("AssemblyGroup", c(FIELD, EXP, TYPE), remove = FALSE) %>% 
+  select(SampleName, SampleID, AssemblyGroup, FastqFile, NUMBER = LAB_NUM, FIELD, SITE, FIELDYR, VENT, EXP, TYPE, SAMPLE_NAME, ORIGIN)
+# View(tmp)  
+#SITE_NUM_FIELDYR_VENT_EXP_SAMPLEID
+table(tmp$AssemblyGroup)
+```
+
