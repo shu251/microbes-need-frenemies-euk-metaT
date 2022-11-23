@@ -13,5 +13,11 @@ Followed all install instructions. See examples of set up documents, _config.yam
 Use python submit scripts that come packaged with eukrhythmic. Using flag **--np** to perform dry run first.
 
 ```
-python submit/eukrhythmic -np
+conda activate eukrhythmic
+python submit/eukrhythmic -np # to generate dry run, ensure everything runs ok.
+
+# To run
+python submit/eukrhythmic all
 ```
+## November 23 2022
+# Submitted batch job 2841147
