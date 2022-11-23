@@ -1,0 +1,37 @@
+### Parameters expected to be changed under normal use ###
+## INPUT DATA AND FORMATTING ##
+# formatted input file; described in README
+jobname: frenemies
+metaT_sample: /vortexfs1/omics/huber/shu/microbes-need-frenemies-euk-metaT/eukrhythmic-output-2022/frenemies-metat-samplelist.txt
+spikefile: /vortexfs1/omics/alexander/ncohen/BATS2019-clio-metaT/spike/spike.fa
+adapter: static/adapters.fa
+## DIRECTORIES DURING PROCESSING ##
+inputDIR: /vortexfs1/omics/huber/data/frenemies-euk-metaT-nov2022/Frenemies_euk_meta_2022_done
+outputDIR: /vortexfs1/omics/huber/shu/microbes-need-frenemies-euk-metaT/eukrhythmic-output-2022
+assembledDIR: assembled
+renamedDIR: renamed
+# this is where all the intermediate outputs will go.
+scratch: /vortexfs1/scratch/sarahhu/frenemies-2022
+## ANALYSIS OPTIONS ##
+# 1 indicates that "spikefile" is used to clean reads
+runbbmap: 1
+# flag to be used to decide whether QUAST/salmon quantification performed
+checkqual: 1
+kmers:
+    - 20
+    - 50
+    - 110
+assemblers:
+    - megahit
+    - trinity
+separategroups: 1
+kegg_prot_db: placeholder
+kegg: placeholder
+busco: placeholder
+pfam: placeholder
+### Parameters only to be changed by advanced users ###
+transdecodercutoff: 100
+secondclustercutoff: 0.98
+defaultkmer: 25
+mincontig: 100
+rewritecluster: 1

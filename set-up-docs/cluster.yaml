@@ -1,0 +1,27 @@
+__default__:
+  account: sarahhu
+  command_options:
+    slurm:
+      account: --account={}
+      command: sbatch --parsable --qos=unlim
+      key_mapping: null
+      mem: --mem={}g
+      name: --job-name={}
+      nodes: -N {}
+      queue: --partition={}
+      threads: -n {}
+      time: --time={}
+  cpupertask: 18
+  mem: 180
+  nodes: 1
+  queue: scavenger
+  system: slurm
+  tasks: 1
+  time: 5000
+required:
+  accountname: sarahhu
+  defaultqueue: compute
+  maxcores: 1
+  maxcpuspertask: 30
+  maxmemory: 180
+  maxtasks: 1
