@@ -59,8 +59,14 @@ sample_list_wassemblygroup <- fastq_list %>%
   )) %>% 
   # unite("AssemblyGroup", c(FIELD, EXP, TYPE), remove = FALSE) %>% 
   select(SampleName, SampleID, AssemblyGroup, FastqFile, NUMBER = LAB_NUM, FIELD, SITE, FIELDYR, VENT, EXP, TYPE, SAMPLE_NAME, ORIGIN)
-# View(tmp)  
 #SITE_NUM_FIELDYR_VENT_EXP_SAMPLEID
-table(tmp$AssemblyGroup)
+table(sample_list_wassemblygroup$AssemblyGroup)
+
+# View(sample_list_wassemblygroup)
+```
+
+```{r}
+write_delim(sample_list_wassemblygroup %>% select(SampleName, SampleID, AssemblyGroup, FastqFile), file = "frenemies-metat-samplelist.txt", delim = "\t")
+# ?write_delim()
 ```
 
