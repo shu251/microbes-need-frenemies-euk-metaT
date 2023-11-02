@@ -1,9 +1,16 @@
+# Import list of salmon count files create txi sample list
+
+## Ensure a samplelist file matches the salmon count file IDs.
+setwd("/home/skhu/microbes-need-frenemies-euk-metaT") # REMOTE:grace
+
 # Get list of all salmon output files
 files <- Sys.glob("/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/salmon/*_quant/quant.sf")
 # files
 
 # Include metadata
-sample_list <- read.csv("frenemies-metat-SAMPLELIST.csv")
+sample_list <- read.csv("input-docs/frenemies-metat-SAMPLELIST.csv")
+
+library(tidyverse)
 
 # Create a sample list dataframe
 sample_merged <- data.frame("Files"=files) %>%
@@ -32,4 +39,4 @@ sample_merged_2 <- sample_merged %>%
     str_detect(VENT, "BSW|Background|Transit") ~ "Background",
     TRUE ~ "Vent"))
 # sample_merged_2
-write_delim(sample_merged_2, file = "sample_merged_txi.txt")
+write_delim(sample_merged_2, file = "input-docs/sample_merged_txi.txt")
