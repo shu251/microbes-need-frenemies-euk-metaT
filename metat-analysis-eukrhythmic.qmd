@@ -4,6 +4,12 @@ format: html
 editor: visual
 ---
 
+*last updated Nov 2022*
+
+# Introduction
+
+Code for running metatranscriptome analysis with [eukrhythmic](https://eukrhythmic.readthedocs.io/en/latest/index.html). Data originates from several vent sites for project 'Microbes need frenmies'.
+
 ## Set up environment
 
 ```{r}
@@ -11,23 +17,29 @@ editor: visual
 library(tidyverse)
 ```
 
+## Create eukrhythmic sample list
+
 Import .csv files for all samples names.
+
 ```{r}
 #| echo: false
-sample_list <- read.csv("frenemies-sample-list.csv")
-fastq_list <- read.csv("frenemies-fastq-list.csv", header = FALSE)
-# View(sample_list)
+sample_list <- read.csv("input-docs/frenemies-sample-list.csv")
+fastq_list <- read.csv("input-docs/frenemies-fastq-list.csv", header = FALSE)
 ```
 
 Fastq files were run on both lanes 1 and 2. So will treat as replicates for now. Separate fastq_list file so we can left join the sample_list information.
-```{r}
-head(fastq_list)
-bg <- c("Plume", "plume", "Background", "background", "Transit, Plus30m")
 
+For assembly groupings, we want diversity represented, but too much diversity may cause chimeric contigs. And if we put in too many reads, this can be a bottleneck for assembly (computationally).
+
+Here, we decided to separate by vent field, sample type (vent vs. non-vent), and if there were many vents (like in the MCR sites), each vent was split into it's own assembly. Based on the 18S analysis, we know that vents even meters apart from one another can have very distinct and diverse communities. For the MCR work, some of the vent (in situ) samples were paired with shipboard grazing assays. These are assembled with the vent samples (as the original fluid was the same) and represent time final for the grazing experiments.
+
+```{r}
+# head(fastq_list)
+# Create sample list for eukrhythmic input
 sample_list_wassemblygroup <- fastq_list %>% 
   mutate(FastqFile = str_remove_all(V1, "_R1_001.fastq.gz"),
          SampleName = str_remove_all(FastqFile, "_S\\d+_L00\\d+")) %>% 
-  left_join(sample_list %>% select(SampleName = SITE_NUM_FIELDYR_VENT_EXP_SAMPLEID, SampleID = "SAMPLEID", everything())) %>% 
+  left_join(sample_list %>% select(SampleName = SITE_NUM_FIELDYR_VENT_EXP_SAMPLEID, SAMPLEID, everything())) %>% 
   mutate(VENT = case_when(
     VENT == "Mustard Stand" ~ "MustardStand",
     TRUE ~ VENT
@@ -58,15 +70,16 @@ sample_list_wassemblygroup <- fastq_list %>%
     SITE == "AXIAL" ~ paste(FIELD, AXIAL_CORR, TYPE, sep = "_")
   )) %>% 
   # unite("AssemblyGroup", c(FIELD, EXP, TYPE), remove = FALSE) %>% 
-  select(SampleName, SampleID, AssemblyGroup, FastqFile, NUMBER = LAB_NUM, FIELD, SITE, FIELDYR, VENT, EXP, TYPE, SAMPLE_NAME, ORIGIN)
+  mutate(SampleID = SampleName) %>% 
+  select(SampleName, SampleID, AssemblyGroup, FastqFile, NUMBER = LAB_NUM, FIELD, SITE, FIELDYR, VENT, EXP, TYPE, SAMPLE_NAME, ORIGIN, SAMPLEID)
 #SITE_NUM_FIELDYR_VENT_EXP_SAMPLEID
 table(sample_list_wassemblygroup$AssemblyGroup)
-
 # View(sample_list_wassemblygroup)
 ```
 
 ```{r}
-write_delim(sample_list_wassemblygroup %>% select(SampleName, SampleID, AssemblyGroup, FastqFile), file = "frenemies-metat-samplelist.txt", delim = "\t")
-# ?write_delim()
+# write_delim(sample_list_wassemblygroup %>% select(SampleName, SampleID, AssemblyGroup, FastqFile), file = "eukrhythmic-run/frenemies-metat-samplelist.txt", delim = "\t")
 ```
+
+# Output from eukrhythmic
 

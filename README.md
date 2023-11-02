@@ -19,5 +19,22 @@ python submit/eukrhythmic -np # to generate dry run, ensure everything runs ok.
 # To run
 python submit/eukrhythmic all
 ```
-## November 23 2022
-# Submitted batch job 2841147
+
+
+## Local & remote workflow for data analysis
+
+### Make local changes
+
+Add new changes to the git repo. Watch memory usage and keep large files separate. Add commit messages to annotate changes.
+```
+git add <newly-changed-files>
+git commit -m "I changed my files!"
+```
+
+Uploaded to a local staging area where you can render (For quarto github page) and keep modifying. When ready, push it to the main repository.
+```
+git push
+```
+
+
+### Make changes remotely
