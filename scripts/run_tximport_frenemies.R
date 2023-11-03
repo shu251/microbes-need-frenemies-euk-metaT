@@ -17,13 +17,22 @@ num_threads <- getDTthreads()
 # Get list of all salmon output files
 files <- Sys.glob("/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/salmon/*_quant/quant.sf")
 
-# Include taxonomic and functional IDs for the tx2gene step
+# Import sample list
+sample_merged <- read_delim(file = "input-docs/frenemies-pretximport.txt") 
+# sample_merged
+names(files) <- sample_merged$SAMPLE_REP  
 
+cat("\nRunning check for all file names:\n")
+names(files)
+
+# Include taxonomic and functional IDs for the tx2gene step
+cat("\nImporting tax and fxn annotation df\n")
 tax_and_fxn <- read.table("/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/TaxonomicAndFunctionalAnnotations.csv", header = TRUE, sep = "\t")
 
 # TEST LINE 
 # tax_and_fxn <- read.table("/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/TaxonomicAndFunctionalAnnotations.csv", header = TRUE, nrows = 250, sep = "\t")
 head(tax_and_fxn)
+
 ptm <- proc.time()
 
 tx2gene_in <- tax_and_fxn %>% 
@@ -43,13 +52,23 @@ cat("\nPrep txi and merged sample table for DEseq input\n")
 # library(tidyverse)
 
 # Import and align with the txi$counts output
-sample_merged_set <- read_delim("input-docs/sample_merged_txi.txt")
-rownames(sample_merged_set) <- sample_merged_set$Sample_rep
-colnames(txi$counts) <- rownames(sample_merged_set)
-colnames(txi$abundance) <- rownames(sample_merged_set)
-colnames(txi$length) <- rownames(sample_merged_set)
-# rownames(sample_merged_set) <- colnames(txi$counts)
-# colnames(txi$counts)
+
+# Convert to data frame.
+sample_merged <- as.data.frame(sample_merged)
+rownames(sample_merged) <- sample_merged$SAMPLE_REP
+colnames(txi$counts) <- rownames(sample_merged)
+colnames(txi$abundance) <- rownames(sample_merged)
+colnames(txi$length) <- rownames(sample_merged)
+
+cat("\nCheck colnames for txi are correct\n")
+colnames(txi$counts)
+
+cat("\nAnd they should match these rownames:\n")
+rownames(sample_merged)
+
+
 save(txi, sample_merged_set, file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/tximport-oct-2023.RData")
+
+cat("\nDONE\n")
 
 # Saves txi object, as this step requires a lot of memory to run.
