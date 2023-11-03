@@ -45,8 +45,11 @@ cat("\nPrep txi and merged sample table for DEseq input\n")
 # Import and align with the txi$counts output
 sample_merged_set <- read_delim("input-docs/sample_merged_txi.txt")
 rownames(sample_merged_set) <- sample_merged_set$Sample_rep
-rownames(sample_merged_set) <- colnames(txi$counts)
-
+colnames(txi$counts) <- rownames(sample_merged_set)
+colnames(txi$abundance) <- rownames(sample_merged_set)
+colnames(txi$length) <- rownames(sample_merged_set)
+# rownames(sample_merged_set) <- colnames(txi$counts)
+# colnames(txi$counts)
 save(txi, sample_merged_set, file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/tximport-oct-2023.RData")
 
 # Saves txi object, as this step requires a lot of memory to run.

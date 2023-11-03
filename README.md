@@ -31,6 +31,12 @@ git add <newly-changed-files>
 git commit -m "I changed my files!"
 ```
 
+Return to remote:
+
+Stay on branch on remote. But you can pull changes from main to your branch.
+```
+git pull origin main
+```
 Uploaded to a local staging area where you can render (For quarto github page) and keep modifying. When ready, push it to the main repository.
 ```
 git push

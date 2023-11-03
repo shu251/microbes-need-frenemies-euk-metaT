@@ -83,35 +83,113 @@ table(sample_list_wassemblygroup$AssemblyGroup)
 
 # Output from eukrhythmic
 
-- Salmon count files, `quant.sf`.
-- TaxonomicAndFunctionalAnnotations.csv
+-   Salmon count files, `quant.sf`.
+-   TaxonomicAndFunctionalAnnotations.csv
 
 ## Process with tximport
 
 First run `scripts/create-samplelist.R`. This will output a sample list ready to be run with the tximport step.
 
-Then execute `scripts/run_tximport_frenemies.R`. This will import all salmon count files and process transcript length to get transcript-level estimates as counts. 
+Then execute `scripts/run_tximport_frenemies.R`. This will import all salmon count files and process transcript length to get transcript-level estimates as counts.
 
-Output from above is an RData object that includes the txi object. This txi object can be subset for downstream analysis. 
+Output from above is an RData object that includes the txi object. This txi object can be subset for downstream analysis.
 
-### Example code
+# Get dataframes for analysis
 
 Import libraries and RData object
+
 ```{r}
 library(DESeq2)
 library(tidyverse)
 library(tximport)
+library(data.table)
 load("/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/tximport-oct-2023.RData", verbose = TRUE)
 ```
 
-Subset txi object
+
+## Subset by sample
+
+Import sample list
+
 ```{r}
+head(sample_merged_set)
+```
 
+```{r}
+all <- sample_merged_set %>%
+  select(sample = SampleName_rep)
 
+mcr <- sample_merged_set %>% 
+  filter(SITE == "MCR") %>% 
+  select(sample = SampleName_rep)
+
+axial <- sample_merged_set %>% 
+  filter(SITE == "AXIAL") %>% 
+  select(sample = SampleName_rep)
 ```
 
 
-Extract count tables for analysis
+## Subset by taxa or gene ID
+
+Temporary test
+```{r}
+# taxfxn <- read.table("/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/TaxonomicAndFunctionalAnnotations.csv", header = TRUE, sep = "\t")
+taxfxn <- read.table("/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/TaxonomicAndFunctionalAnnotations.csv", header = TRUE, nrows = 250, sep = "\t")
+```
+
+```{r}
+tx2gene_in <- taxfxn %>% 
+  dplyr::mutate(SEQ_ID = stringr::str_remove(SequenceID, ".p[:digit:]$"))
+```
+
+Subset for eukaryotes
+
+```{r}
+euks_only <- as.character(tx2gene_in %>% 
+  filter(grepl("Eukaryota", full_classification)) %>% 
+  select(SEQ_ID) %>% 
+    .[["SEQ_ID"]])
+```
+
+Subset for eukaryotes only and transcript must have annotation
+```{r}
+euks_annot_only <- as.character(
+  filter(tx2gene_in, grepl("Eukaryota", full_classification) & (PFAMs != "-" | KEGG_ko != "-")) %>% 
+    select(SequenceID) %>% 
+    .[["SequenceID"]])
+```
+
+```{r}
+save(all, mcr, axial, euks_only, euks_annot_only, file = "input-docs/objs-txi-subset.RData")
+```
+
+
+# Subset txi object
+
+Function to subset txi object:
+
+```{r}
+# Subset txi directly
+subsetTxi <- function(txi, samples, include_genes=rownames(txi$counts))
+  {
+  genes <- rownames(txi$counts)[rownames(txi$counts) %in% include_genes]
+  txi$abundance <- txi$abundance[genes, samples$sample]
+  txi$counts <- txi$counts[genes, samples$sample]
+  txi$length <- txi$length[genes, samples$sample]
+  return(txi)
+  }
+
+# Example usage 
+# tmp <- sample(taxfxn$SequenceID,10,replace = FALSE)
+# pola <- data.frame(sample = c("PortofLA_1", "PortofLA_2"))
+# txi_pola <- subsetTxi(txi, pola, tmp)
+```
+
+To execute the above code for this project, see `scripts/subset-txi.R`.
+
+
+## Extract count tables for analysis
+
 ```{r}
 counts_scaled <- makeCountsFromAbundance(
   as.matrix(txi$counts),
@@ -130,7 +208,6 @@ names_orig <- colnames(counts_df)
 names_new <- sub("_[^_]+$", "", names_orig)
 colnames(counts_df) <- names_new
 ```
-
 
 Mean across columns that have the same name - which are replicates.
 
@@ -163,34 +240,10 @@ head(assay(vsd_all), 4)
 df_ctr_norm <- as.data.frame(assay(vsd_all))
 ```
 
-## Subsetting data
-
-Import sample list
-```{r}
-
-```
-
-Function to subset txi object:
-```{r}
-# Subset txi directly
-subsetTxi <- function(txi, samples, include_genes=rownames(txi$counts))
-  {
-  genes <- rownames(txi$counts)[rownames(txi$counts) %in% include_genes]
-  txi$abundance <- txi$abundance[genes, samples$sample]
-  txi$counts <- txi$counts[genes, samples$sample]
-  txi$length <- txi$length[genes, samples$sample]
-  return(txi)
-  }
-
-# Example usage 
-# tmp <- sample(taxfxn$SequenceID,10,replace = FALSE)
-# pola <- data.frame(sample = c("PortofLA_1", "PortofLA_2"))
-# txi_pola <- subsetTxi(txi, pola, tmp)
-```
 
 
 # Info
+
 ```{r}
 sessionInfo()
 ```
-
