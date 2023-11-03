@@ -38,3 +38,16 @@ git push
 
 
 ### Make changes remotely
+
+First make sure local repo and remote are up to date. 
+
+```
+git pull
+```
+
+You have the option to create a remote branch. Then merge the changes later.
+
+```
+git add <newly-changed-files>
+git commit -m "I changed my files!"
+```
