@@ -103,7 +103,8 @@ library(DESeq2)
 library(tidyverse)
 library(tximport)
 library(data.table)
-load("/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/tximport-oct-2023.RData", verbose = TRUE)
+# Test comment line!
+load("/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/tximport-nov-2023.RData", verbose = TRUE)
 ```
 
 
@@ -112,18 +113,18 @@ load("/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/tximport-oct-
 Import sample list
 
 ```{r}
-head(sample_merged_set)
+head(sample_merged)
 ```
 
 ```{r}
-all <- sample_merged_set %>%
+all <- sample_merged %>%
   select(sample = SampleName_rep)
 
-mcr <- sample_merged_set %>% 
+mcr <- sample_merged %>% 
   filter(SITE == "MCR") %>% 
   select(sample = SampleName_rep)
 
-axial <- sample_merged_set %>% 
+axial <- sample_merged %>% 
   filter(SITE == "AXIAL") %>% 
   select(sample = SampleName_rep)
 ```
