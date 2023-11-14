@@ -4,24 +4,60 @@ library(DESeq2)
 library(tidyverse)
 library(tximport)
 library(data.table)
-load("/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/tximport-oct-2023.RData", verbose = TRUE)
 
-all <- sample_merged_set %>%
-  select(sample = Sample_rep)
+# load("/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/tximport-nov-2023.RData", verbose = TRUE)
+# sample_merged_new <- sample_merged %>% 
+# mutate(VENT = str_replace(VENT, "Mustard Stand", "MustardStand"))
+# write_delim(sample_merged_new, file = "input-docs/sample_merged_txi.txt")
 
-mcr <- sample_merged_set %>% 
+sample_merged <- read_delim("input-docs/sample_merged_txi.txt")
+
+# Use same name ending with "_REP1" or "_REP2"
+all <- sample_merged %>%
+  select(sample = SAMPLE_REP)
+
+all_no_tf <- sample_merged %>% 
+  filter(EXP == "insitu") %>% 
+  select(sample = SAMPLE_REP)
+
+# Of all the samples at MCR, which have paired in situ vs. Tf?
+tmp_tf <- sample_merged_new %>% 
   filter(SITE == "MCR") %>% 
-  select(sample = Sample_rep)
+  # filter(VENT != "Background") %>% 
+  # filter(VENT != "Plume") %>% 
+  select(EXP, VENT) %>% 
+  add_column(VAR = 1) %>% 
+  pivot_wider(names_from = EXP, values_from = VAR, values_fn = sum) %>% 
+  drop_na()
 
-axial <- sample_merged_set %>% 
+vent_wexperiments <- as.character(tmp_tf$VENT)
+
+mcr <- sample_merged %>% 
+  filter(SITE == "MCR") %>% 
+  select(sample = SAMPLE_REP)
+
+mcr_no_tf <- sample_merged %>% 
+  filter(SITE == "MCR") %>% 
+  select(sample = SAMPLE_REP)
+
+mcr_paired_tf <- sample_merged %>% 
+  filter(SITE == "MCR") %>% 
+  filter(VENT %in% vent_wexperiments) %>% 
+  select(sample = SAMPLE_REP)
+
+axial <- sample_merged %>% 
   filter(SITE == "AXIAL") %>% 
-  select(sample = Sample_rep)
+  select(sample = SAMPLE_REP)
 
 taxfxn <- read.table("/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/TaxonomicAndFunctionalAnnotations.csv", header = TRUE, sep = "\t")
 
+## TESTING
+# taxfxn <- read.table("/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/TaxonomicAndFunctionalAnnotations.csv", header = TRUE, sep = "\t", nrows = 300)
+## TESING
+
 tx2gene_in <- taxfxn %>% 
   dplyr::mutate(SEQ_ID = stringr::str_remove(SequenceID, ".p[:digit:]$"))
-# head(tx2gene_in)
+
 euks_only <- as.character(tx2gene_in %>% 
                             filter(grepl("Eukaryota", full_classification)) %>% 
                             select(transcript_name) %>% 
@@ -32,7 +68,8 @@ euks_annot_only <- as.character(
     select(transcript_name) %>% 
     .[["transcript_name"]])
 
-save(all, mcr, axial, euks_only, euks_annot_only, file = "input-docs/objs-txi-subset.RData")
+save(all, all_no_tf, mcr_no_tf, mcr, mcr_paired_tf, axial, euks_only, euks_annot_only, file = "input-docs/objs-txi-subset.RData")
+cat("\n\nDONE\n\n")
 
 # Subset txi directly
 subsetTxi <- function(txi, samples, include_genes=rownames(txi$counts))
@@ -44,30 +81,19 @@ subsetTxi <- function(txi, samples, include_genes=rownames(txi$counts))
   return(txi)
 }
 
-txi_euk_annot <- subsetTxi(txi, all, euks_annot_only)
+cat("\n\nStart txi subset\n\n")
+# All samples, no grazing experiments
+txi_euk_annot <- subsetTxi(txi, all_no_tf, euks_annot_only)
+txi_euk_only <- subsetTxi(txi, all_no_tf, euks_only)
 
-txi_euk_only <- subsetTxi(txi, all, euks_only)
-
-txi_mcr_euk_annot <- subsetTxi(txi, mcr, euks_annot_only)
+txi_mcr_euk_annot <- subsetTxi(txi, mcr_no_tf, euks_annot_only)
+txi_mcr_euk_annot_paired_exps <- subsetTxi(txi, mcr_paired_tf, euks_annot_only)
 
 txi_axial_euk_annot <- subsetTxi(txi, axial, euks_annot_only)
 
 save(txi_euk_annot, txi_euk_only, file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/txi-allsamples.RData")
-save(txi_mcr_euk_annot, file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/txi-mcr.RData")
+
+save(txi_mcr_euk_annot, txi_mcr_euk_annot_paired_exps, file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/txi-mcr-TMP.RData")
+
 save(txi_axial_euk_annot, file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/txi-axial.RData")
 
-
-# txi_ca <- subsetTxi(txi, ca_only, euks_only)
-# 
-# tmp_sample_merged <- sample_merged %>% 
-#   filter(Sample_rep %in% as.character(ca_only$sample))
-# rownames(tmp_sample_merged) <- tmp_sample_merged$Sample_rep
-# rownames(tmp_sample_merged) <- colnames(txi_ca$counts)
-# 
-# # Compare euphotic vs. subeuphotic in coastal California
-# ## Includes Port of LA and Catalina
-# ds_tpm_ca_light <- DESeqDataSetFromTximport(txi_ca,
-#                                             colData = tmp_sample_merged,
-#                                             design = ~0 + LIGHT)
-# 
-# save(ds_tpm_ca_light, file = "/vortexfs1/scratch/sarahhu/txi-objs-metaT/ca-deseq.RData")

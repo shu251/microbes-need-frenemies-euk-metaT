@@ -67,7 +67,7 @@ cat("\nAnd they should match these rownames:\n")
 rownames(sample_merged)
 
 
-save(txi, sample_merged_set, file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/tximport-oct-2023.RData")
+save(txi, sample_merged, file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/tximport-nov-2023.RData")
 
 cat("\nDONE\n")
 
