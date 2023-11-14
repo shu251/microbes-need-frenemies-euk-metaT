@@ -1,0 +1,165 @@
+---
+title: "Microbes need frenemies: Mid-Cayman Rise"
+format: html
+editor: visual
+---
+
+# Set up environment - Mid-Cayman Rise
+
+```{r}
+library(tidyverse)
+library(tximport)
+```
+
+Import MCR data from TXI subset.
+
+```{r}
+load(file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/txi-mcr.RData", verbose = TRUE)
+# class(txi_mcr_euk_annot)
+```
+
+## Scaled data frame
+
+```{r}
+mcr_counts_scaled <- makeCountsFromAbundance(
+  as.matrix(txi_mcr_euk_annot$counts),
+  as.matrix(txi_mcr_euk_annot$abundance),
+  as.matrix(txi_mcr_euk_annot$length),
+  countsFromAbundance = "scaledTPM")
+# class(mcr_counts_scaled)
+# head(mcr_counts_scaled)
+mcr_df_scaled <- as.data.frame(mcr_counts_scaled)
+```
+
+```{r}
+# dim(mcr_df_scaled)
+# head(mcr_df_scaled)
+```
+
+## Count table
+
+Strip column names of replicate information. Ready column headers for averaging across replicates.
+
+```{r}
+names_orig <- colnames(mcr_df_scaled)
+# names_orig
+names_new_0 <- sub("_[^_]+$", "", names_orig)
+# names_new_0
+names_new_1 <- sub("MCR_\\d\\d_", "", names_new_0)
+# names_new_1
+colnames(mcr_df_scaled) <- names_new_1
+```
+
+```{r}
+# head(mcr_df_scaled)
+```
+
+```{r}
+mcr_mean_counts_df <- mcr_df_scaled %>%
+  cbind(as.list(.) %>%
+    Filter(is.numeric, .) %>% 
+    split(names(.)) %>%
+    lapply(as.data.frame) %>%
+    lapply(rowMeans) %>%
+    setNames(paste0("mean.", names(.)))) %>% 
+  select(starts_with("mean"))
+
+# head(mcr_mean_counts_df)
+```
+
+# Taxonomic breakdown
+
+Import taxonomic and functional information.
+
+```{r}
+# taxfxn <- read_delim(file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/TaxonomicAndFunctionalAnnotations.csv") #
+head(taxfxn)[1:3,]
+```
+
+Join with mean of the transcript counts
+
+```{r}
+# head(mcr_mean_counts_df)[1:3,]
+mcr_annotated_mean <- dplyr::left_join(mcr_mean_counts_df %>%
+                   mutate(SequenceID = rownames(mcr_mean_counts_df)),
+                                 taxfxn,
+                                 by = "SequenceID")
+```
+
+Isolate only taxonomic IDs
+
+```{r}
+mcr_df_for_tax <- mcr_annotated_mean %>% 
+  select(full_classification, starts_with("mean"), SequenceID) %>% 
+  distinct()
+
+mcr_wtax_only <- mcr_df_for_tax %>% 
+  select(-SequenceID) %>% 
+  pivot_longer(cols = starts_with("mean"), names_to = "SAMPLE", values_to = "scaledTPM") %>% 
+  group_by(SAMPLE, full_classification) %>% 
+    summarise(SUM_scaledTPM = sum(scaledTPM)) 
+```
+
+```{r}
+# save(mcr_mean_counts_df, mcr_wtax_only, file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/mcr_df_tax_means.RData")
+```
+
+Import MCR taxonomic data
+
+```{r}
+load("/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/mcr_df_tax_means.RData", verbose = TRUE)
+```
+
+```{r}
+head(mcr_wtax_only)
+```
+
+Taxonomic breakdown of metatranscriptome data from Mid-Cayman Rise.
+
+```{r}
+taxa <- mcr_wtax_only %>%
+  select(full_classification) %>% distinct() %>% 
+  separate(full_classification, c("Domain", "Supergroup", "Phylum", "Class", "Order", "Family", "Genus_spp"), sep = "; ", remove = FALSE) %>% 
+  mutate(
+    SUPERGROUP = case_when(Supergroup == NA ~ "Eukaryote unannotated",
+                           Supergroup == "Eukaryota incertae sedis" ~ "Eukaryote unannotated",
+                           TRUE ~ Supergroup))
+  
+# head(taxa)
+# unique(taxa$SUPERGROUP)
+head(mcr_wtax_only)
+```
+
+```{r}
+mcr_wtax_supergroup <- mcr_wtax_only %>% 
+  separate(SAMPLE, c("FIELD", "LOCATION", "EXP", "SAMPLE_ID"), sep = "_") %>% 
+  separate(full_classification, c("Domain", "Supergroup", "Phylum", "Class", "Order", "Family", "Genus_spp"), sep = "; ", remove = FALSE) %>% 
+  mutate(
+    SUPERGROUP = case_when(Supergroup == NA ~ "Eukaryote unannotated",
+                           Supergroup == "Eukaryota incertae sedis" ~ "Eukaryote unannotated",
+                           TRUE ~ Supergroup),
+    VENT_FIELD = case_when(grepl("Piccard", FIELD) ~ "Piccard",
+                           grepl("VonDamm", FIELD) ~ "Von Damm")) %>% 
+  group_by(VENT_FIELD, LOCATION, EXP, SUPERGROUP) %>% 
+    summarise(MEAN = mean(SUM_scaledTPM))
+# Domain, Supergroup, Phylum, Class, Order, Family, Genus, Species
+```
+
+```{r}
+mcr_wtax_supergroup %>% 
+  ggplot(aes(x = LOCATION, y = MEAN, fill = SUPERGROUP)) +
+  geom_bar(stat = "identity", position = "fill", color = "black") +
+    theme_linedraw() +
+    theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) +
+  facet_grid(rows = vars(VENT_FIELD, EXP), scales = "free_y", space = "free")
+```
+
+# DE seq MCR
+
+See scripts: `metaT-deseq-Vent_NonVent.R'
+
+# Session Information
+
+```{r}
+sessionInfo()
+```

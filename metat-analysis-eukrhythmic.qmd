@@ -4,7 +4,7 @@ format: html
 editor: visual
 ---
 
-*last updated Nov 2022*
+*last updated Nov 2023*
 
 # Introduction
 
@@ -107,7 +107,6 @@ library(data.table)
 load("/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/tximport-nov-2023.RData", verbose = TRUE)
 ```
 
-
 ## Subset by sample
 
 Import sample list
@@ -129,10 +128,10 @@ axial <- sample_merged %>%
   select(sample = SampleName_rep)
 ```
 
-
 ## Subset by taxa or gene ID
 
 Temporary test
+
 ```{r}
 # taxfxn <- read.table("/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/TaxonomicAndFunctionalAnnotations.csv", header = TRUE, sep = "\t")
 taxfxn <- read.table("/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/TaxonomicAndFunctionalAnnotations.csv", header = TRUE, nrows = 250, sep = "\t")
@@ -153,6 +152,7 @@ euks_only <- as.character(tx2gene_in %>%
 ```
 
 Subset for eukaryotes only and transcript must have annotation
+
 ```{r}
 euks_annot_only <- as.character(
   filter(tx2gene_in, grepl("Eukaryota", full_classification) & (PFAMs != "-" | KEGG_ko != "-")) %>% 
@@ -163,7 +163,6 @@ euks_annot_only <- as.character(
 ```{r}
 save(all, mcr, axial, euks_only, euks_annot_only, file = "input-docs/objs-txi-subset.RData")
 ```
-
 
 # Subset txi object
 
@@ -187,7 +186,6 @@ subsetTxi <- function(txi, samples, include_genes=rownames(txi$counts))
 ```
 
 To execute the above code for this project, see `scripts/subset-txi.R`.
-
 
 ## Extract count tables for analysis
 
@@ -240,8 +238,6 @@ head(assay(vsd_all), 4)
 ```{r}
 df_ctr_norm <- as.data.frame(assay(vsd_all))
 ```
-
-
 
 # Info
 
