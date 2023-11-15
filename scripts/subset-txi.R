@@ -5,7 +5,7 @@ library(tidyverse)
 library(tximport)
 library(data.table)
 
-# load("/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/tximport-nov-2023.RData", verbose = TRUE)
+load("/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/tximport-nov-2023.RData", verbose = TRUE)
 # sample_merged_new <- sample_merged %>% 
 # mutate(VENT = str_replace(VENT, "Mustard Stand", "MustardStand"))
 # write_delim(sample_merged_new, file = "input-docs/sample_merged_txi.txt")
@@ -21,7 +21,7 @@ all_no_tf <- sample_merged %>%
   select(sample = SAMPLE_REP)
 
 # Of all the samples at MCR, which have paired in situ vs. Tf?
-tmp_tf <- sample_merged_new %>% 
+tmp_tf <- sample_merged %>% 
   filter(SITE == "MCR") %>% 
   # filter(VENT != "Background") %>% 
   # filter(VENT != "Plume") %>% 
@@ -93,7 +93,7 @@ txi_axial_euk_annot <- subsetTxi(txi, axial, euks_annot_only)
 
 save(txi_euk_annot, txi_euk_only, file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/txi-allsamples.RData")
 
-save(txi_mcr_euk_annot, txi_mcr_euk_annot_paired_exps, file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/txi-mcr-TMP.RData")
+save(txi_mcr_euk_annot, txi_mcr_euk_annot_paired_exps, file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/txi-mcr.RData")
 
 save(txi_axial_euk_annot, file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/txi-axial.RData")
 

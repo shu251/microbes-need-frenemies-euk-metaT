@@ -50,4 +50,4 @@ mcr_wtax_only <- mcr_df_for_tax %>%
   summarise(SUM_scaledTPM = sum(scaledTPM)) 
  
 save(mcr_mean_counts_df, mcr_wtax_only, file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/mcr_df_tax_means.RData")
-cat("\nDone.\n")
+cat("\nDone\n")

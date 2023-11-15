@@ -72,7 +72,7 @@ mcr_mean_counts_df <- mcr_df_scaled %>%
 Import taxonomic and functional information.
 
 ```{r}
-# taxfxn <- read_delim(file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/TaxonomicAndFunctionalAnnotations.csv") #
+taxfxn <- read_delim(file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/TaxonomicAndFunctionalAnnotations.csv") #
 head(taxfxn)[1:3,]
 ```
 
