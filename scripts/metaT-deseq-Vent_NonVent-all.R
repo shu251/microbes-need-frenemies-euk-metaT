@@ -40,7 +40,7 @@ deseq_vent_novent <- function(sample_set, gene_set){
   groupsize <- 2 # Transcript to consider, must be in at least 3 samples
   keep <- rowSums(counts(ds_tpm_output) >= 10) >= groupsize # And have >= to 10 counts
   ds_tpm_output_filtered_0 <- ds_tpm_output[keep,]
-  ds_tpm_output_filtered <- estimateSizeFactors(ds_tpm_output_filtered_0, type = 'iterate')
+  ds_tpm_output_filtered <- estimateSizeFactors(ds_tpm_output_filtered_0, type = 'poscounts')
   ###
   # Filtering stats:
   cat("\nStarted with ", dim(ds_tpm_output)[1], "observations. Filtering by 2 samples and 10 counts resulted in,", dim(ds_tpm_output_filtered)[1], ", which is", (100*(dim(ds_tpm_output_filtered)[1]/dim(ds_tpm_output)[1])), "% of the data.\n\n")
