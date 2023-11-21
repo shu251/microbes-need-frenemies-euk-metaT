@@ -104,10 +104,13 @@ mcr_wtax_only <- mcr_df_for_tax %>%
 # save(mcr_mean_counts_df, mcr_wtax_only, file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/mcr_df_tax_means.RData")
 ```
 
-Import MCR taxonomic data
+## Import MCR taxonomic data
+
+Pick up here locally!
 
 ```{r}
-load("/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/mcr_df_tax_means.RData", verbose = TRUE)
+# load("/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/mcr_df_tax_means.RData", verbose = TRUE)
+load("mcr_df_tax_means.RData", verbose = TRUE)
 ```
 
 ```{r}
@@ -127,22 +130,29 @@ taxa <- mcr_wtax_only %>%
   
 # head(taxa)
 # unique(taxa$SUPERGROUP)
-head(mcr_wtax_only)
+# head(mcr_wtax_only)
 ```
 
 ```{r}
+# head(mcr_wtax_only)
 mcr_wtax_supergroup <- mcr_wtax_only %>% 
   separate(SAMPLE, c("FIELD", "LOCATION", "EXP", "SAMPLE_ID"), sep = "_") %>% 
+  filter(EXP == "insitu") %>% 
   separate(full_classification, c("Domain", "Supergroup", "Phylum", "Class", "Order", "Family", "Genus_spp"), sep = "; ", remove = FALSE) %>% 
   mutate(
-    SUPERGROUP = case_when(Supergroup == NA ~ "Eukaryote unannotated",
+    SUPERGROUP = case_when(is.na(Supergroup) ~ "Eukaryote unannotated",
                            Supergroup == "Eukaryota incertae sedis" ~ "Eukaryote unannotated",
                            TRUE ~ Supergroup),
     VENT_FIELD = case_when(grepl("Piccard", FIELD) ~ "Piccard",
                            grepl("VonDamm", FIELD) ~ "Von Damm")) %>% 
-  group_by(VENT_FIELD, LOCATION, EXP, SUPERGROUP) %>% 
+  group_by(VENT_FIELD, LOCATION, SUPERGROUP) %>% 
     summarise(MEAN = mean(SUM_scaledTPM))
 # Domain, Supergroup, Phylum, Class, Order, Family, Genus, Species
+# head(mcr_wtax_supergroup)
+```
+
+```{r}
+# table(mcr_wtax_supergroup$SUPERGROUP)
 ```
 
 ```{r}
@@ -151,12 +161,98 @@ mcr_wtax_supergroup %>%
   geom_bar(stat = "identity", position = "fill", color = "black") +
     theme_linedraw() +
     theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) +
-  facet_grid(rows = vars(VENT_FIELD, EXP), scales = "free_y", space = "free")
+  facet_grid(cols = vars(VENT_FIELD), scales = "free_x", space = "free")
 ```
+
+### Fit to tag-seq IDs
+
+```{r}
+# all_taxa_order <- c("Alveolata-Ciliophora", "Alveolata-Dinoflagellata", "Protalveolata", "Other Alveolata", "Amoebozoa", "Apusozoa", "Excavata", "Hacrobia", "Archaeplastida", "Rhizaria", "Rhizaria-Radiolaria", "Rhizaria-Cercozoa", "Stramenopiles", "Stramenopiles-Opalozoa", "Stramenopiles-Sagenista", "Stramenopiles-Ochrophyta", "Opisthokonta", "Unknown Eukaryota")
+# length(all_taxa_order)
+# "Stramenopiles-Opalozoa;Sagenista"
+# "Other-metaT only"
+
+# all_taxa_color = c("#fa9fb5", "#c51b8a", "#67000d", "#ef3b2c", "#ffffcc", "#feb24c","#cc4c02", "#c7e9b4", "#238b45", "#c6dbef", "#99d8c9","#1d91c0", "#253494", "#9e9ac8", "#54278f", "#bdbdbd", "#252525", "#f0f0f0")
+
+all_taxa_metat_order <- c("Alveolata-Ciliophora", "Alveolata-Dinoflagellata", "Other Alveolata", "Amoebozoa", "Apusozoa", "Archaeplastida","Excavata", "Hacrobia", "Rhizaria-Cercozoa",  "Rhizaria-Radiolaria","Rhizaria",  "Stramenopiles", "Stramenopiles-Ochrophyta","Stramenopiles-Opalozoa;Sagenista",  "Opisthokonta", "Other-metaT only", "Unknown Eukaryota")
+all_taxa_metat_color = c("#fa9fb5", "#c51b8a", "#1d91c0","#67000d", "#ef3b2c", "#ffffcc","#feb24c",  "#c7e9b4",  "#253494", "#9e9ac8","lightblue", "#238b45", "#54278f", "#bdbdbd", "#fee6ce", "#cb181d", "#000000")
+# length(all_taxa_metat_color)
+# length(all_taxa_metat_order)
+```
+
+```{r}
+# alv_names <- c("Ciliophora", "Dinophyta", "Perkinsea", "Colponemidia", "Chromerida")
+as_is <- c("Amoebozoa", "Apusozoa", "Excavata", "Hacrobia", "Archaeplastida")
+
+taxa <- mcr_wtax_only %>%
+  select(full_classification) %>% distinct() %>% 
+  separate(full_classification, c("Domain", "Supergroup", "Phylum", "Class", "Order", "Family", "Genus_spp"), sep = "; ", remove = FALSE) %>% 
+  mutate(SUPERGROUP_18S = case_when(
+    Phylum == "Ciliophora" ~ "Alveolata-Ciliophora",
+    Phylum == "Dinophyta" ~ "Alveolata-Dinoflagellata",
+    # Phylum == "Perkinsea" ~ "Protalveolata",
+    # Phylum == "Colponemidia" ~ "Protalveolata",
+    # Phylum == "Chromerida" ~ "Protalveolata",
+    Supergroup == "Alveolata" ~ "Other Alveolata",
+    Supergroup %in% as_is ~ Supergroup,
+    Supergroup == "Haptista" ~ "Hacrobia",
+    Phylum == "Radiolaria" ~ "Rhizaria-Radiolaria",
+    Phylum == "Cercozoa" ~ "Rhizaria-Cercozoa",
+    (Supergroup == "Rhizaria" & Phylum != "Radiolaria" & Phylum != "Cercozoa") ~ "Rhizaria",
+    Order == "Bigyra" ~ "Stramenopiles-Opalozoa;Sagenista",
+    Class == "Ochromonadales" ~ "Stramenopiles-Ochrophyta",
+    Supergroup == "Stramenopiles" ~ "Stramenopiles",
+    Supergroup == "Opisthokonta" ~ "Opisthokonta",
+    (is.na(Supergroup) | Supergroup == "Eukaryota incertae sedis") ~ "Unknown Eukaryota",
+    TRUE ~ "Other-metaT only")) %>% 
+  mutate(SUPERGROUP_18S_ORDER = factor(SUPERGROUP_18S, levels = all_taxa_metat_order))
+# unique(taxa$SUPERGROUP_18S_ORDER)
+```
+
+```{r}
+mcr_wtax_only %>% 
+  separate(SAMPLE, c("FIELD", "LOCATION", "EXP", "SAMPLE_ID"), sep = "_") %>% 
+  filter(EXP == "insitu") %>% 
+  separate(full_classification, c("Domain", "Supergroup", "Phylum", "Class", "Order", "Family", "Genus_spp"), sep = "; ", remove = FALSE) %>% 
+  mutate(SUPERGROUP_18S = case_when(
+    Phylum == "Ciliophora" ~ "Alveolata-Ciliophora",
+    Phylum == "Dinophyta" ~ "Alveolata-Dinoflagellata",
+    # Phylum == "Perkinsea" ~ "Protalveolata",
+    # Phylum == "Colponemidia" ~ "Protalveolata",
+    # Phylum == "Chromerida" ~ "Protalveolata",
+    Supergroup == "Alveolata" ~ "Other Alveolata",
+    Supergroup %in% as_is ~ Supergroup,
+    Supergroup == "Haptista" ~ "Hacrobia",
+    Phylum == "Radiolaria" ~ "Rhizaria-Radiolaria",
+    Phylum == "Cercozoa" ~ "Rhizaria-Cercozoa",
+    (Supergroup == "Rhizaria" & Phylum != "Radiolaria" & Phylum != "Cercozoa") ~ "Rhizaria",
+    Order == "Bigyra" ~ "Stramenopiles-Opalozoa;Sagenista",
+    Class == "Ochromonadales" ~ "Stramenopiles-Ochrophyta",
+    Supergroup == "Stramenopiles" ~ "Stramenopiles",
+    Supergroup == "Opisthokonta" ~ "Opisthokonta",
+    (is.na(Supergroup) | Supergroup == "Eukaryota incertae sedis") ~ "Unknown Eukaryota",
+    TRUE ~ "Other-metaT only")) %>% 
+  mutate(VENT_FIELD = case_when(grepl("Piccard", FIELD) ~ "Piccard",
+                           grepl("VonDamm", FIELD) ~ "Von Damm")) %>% 
+  mutate(VENT_BIN = case_when(
+    (LOCATION == "Background" | LOCATION == "Plume") ~ "Non-vent",
+    TRUE ~ "Vent"
+  )) %>% 
+  group_by(VENT_FIELD, VENT_BIN, LOCATION, SUPERGROUP_18S) %>% 
+    summarise(MEAN = mean(SUM_scaledTPM)) %>% 
+  mutate(SUPERGROUP_18S_ORDER = factor(SUPERGROUP_18S, levels = all_taxa_metat_order)) %>% 
+  ggplot(aes(x = LOCATION, y = MEAN, fill = SUPERGROUP_18S_ORDER)) +
+  geom_bar(stat = "identity", position = "fill", color = "black") +
+  scale_fill_manual(values = all_taxa_metat_color) +
+    theme_linedraw() +
+    theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) +
+  facet_grid(cols = vars(VENT_FIELD, VENT_BIN), scales = "free_x", space = "free")
+```
+
 
 # DE seq MCR
 
-See scripts: `metaT-deseq-Vent_NonVent.R'
+See scripts: \`metaT-deseq-Vent_NonVent.R'
 
 # Session Information
 
