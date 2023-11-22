@@ -109,8 +109,8 @@ mcr_wtax_only <- mcr_df_for_tax %>%
 Pick up here locally!
 
 ```{r}
-# load("/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/mcr_df_tax_means.RData", verbose = TRUE)
-load("mcr_df_tax_means.RData", verbose = TRUE)
+load("/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/mcr_df_tax_means.RData", verbose = TRUE)
+# load("mcr_df_tax_means.RData", verbose = TRUE)
 ```
 
 ```{r}
@@ -249,10 +249,109 @@ mcr_wtax_only %>%
   facet_grid(cols = vars(VENT_FIELD, VENT_BIN), scales = "free_x", space = "free")
 ```
 
-
 # DE seq MCR
 
 See scripts: \`metaT-deseq-Vent_NonVent.R'
+
+Import transcripts processed through DESeq to look at differentially expressed genes based on if the sample was in the vent versus outside of the vent.
+
+```{r, message=FALSE}
+library(DESeq2); library(tidyverse)
+```
+
+```{r}
+taxfxn <- read_delim(file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/TaxonomicAndFunctionalAnnotations.csv") #
+head(taxfxn)[1:3,]
+```
+```{r}
+kegg <- read.csv("../KEGG_DB/combined_kegg.csv")
+# dim(kegg)
+curated_kegg <- read.csv("../KEGG_DB/reformat-kegg-pfam-skh.csv")
+```
+
+
+```{r}
+load("/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/mcr-insitu_vent_vs_novent_DESeq.RData", verbose = TRUE)
+```
+
+Tranform DEseq class information to a dataframe. 
+
+```{r}
+class(de_mcr_annot)
+results_mcr_annot <- results(de_mcr_annot, alpha = 0.05)
+#Snapshot of results. 
+summary(results_mcr_annot)
+```
+
+
+```{r}
+mcr_transcripts <- data.frame(results_mcr_annot) %>% 
+  mutate(REGULATION = case_when(
+    log2FoldChange > 0 ~ "upregulated in vents",
+    log2FoldChange < 0 ~ "upregulated in background"
+  ),
+  SIGNIFICANT = case_when(
+    pvalue <= 0.05 ~ "Significantly",
+    TRUE ~ "Not significantly"
+  )) %>% 
+  # filter(SIGNIFICANT == "Significantly") %>% 
+  rownames_to_column(var = "SequenceID")
+```
+
+```{r}
+glimpse(results_mcr_annot)
+glimpse(mcr_transcripts)
+```
+
+```{r}
+# head(mcr_transcripts)
+data.frame(mcr_transcripts) %>% 
+  ggplot(aes(x = baseMean, y = log2FoldChange, color = SIGNIFICANT)) +
+  geom_point(stat = "identity") +
+  scale_x_log10() +
+  theme_classic() +
+  scale_color_manual(values = c("#878787", "#d73027"))
+# +
+  # labs(title = mcols(res_hapto)$description[2])
+```
+
+
+```{r}
+# head(mcr_transcripts)
+# colnames(taxfxn)
+
+kegg_mod <- kegg %>% select(-X, KEGG = KO_number, everything())
+
+mcr_trans_wKEGG <- mcr_transcripts %>% 
+  filter(SIGNIFICANT == "Significantly") %>% 
+  left_join(taxfxn) %>% 
+  mutate(KEGG = str_remove_all(KEGG_ko, "ko:")) %>%
+  mutate(KEGG = strsplit(as.character(KEGG), ",")) %>% 
+    unnest(KEGG) %>% 
+  left_join(kegg_mod)
+```
+
+```{r}
+head(mcr_trans_wKEGG)
+mcr_trans_wKEGG %>% 
+  group_by(KeggOrthology_A, REGULATION) %>% 
+  summarise(SUM = log2FoldChange) %>% 
+  ggplot(aes(x = REGULATION, y = SUM)) + 
+    geom_bar(stat = "identity")
+```
+
+```{r}
+save(mcr_trans_wKEGG, mcr_transcripts, file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/mcr_df_DE_annot.RData")
+```
+
+
+
+# MCR a look a specific taxa
+```{r}
+load("/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/mcr_df_tax_means.RData", verbose = TRUE)
+
+```
+
 
 # Session Information
 
