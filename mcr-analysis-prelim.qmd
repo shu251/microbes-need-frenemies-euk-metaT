@@ -35,7 +35,6 @@ mcr_counts_scaled <- makeCountsFromAbundance(
 mcr_df_scaled <- as.data.frame(mcr_counts_scaled)
 ```
 
-
 ## Count table
 
 Strip column names of replicate information. Ready column headers for averaging across replicates.
@@ -50,7 +49,6 @@ names_new_1 <- sub("MCR_\\d\\d_", "", names_new_0)
 # names_new_1
 colnames(mcr_df_scaled) <- names_new_1
 ```
-
 
 ```{r}
 # | eval: false
@@ -105,6 +103,11 @@ mcr_wtax_only <- mcr_df_for_tax %>%
 ```{r}
 # save(mcr_mean_counts_df, mcr_wtax_only, file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/mcr_df_tax_means.RData")
 ```
+
+```{r}
+# save(mcr_annotated_mean, file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/mcr_annotated_mean.RData")
+```
+
 
 ## Import MCR taxonomic data
 
@@ -255,24 +258,27 @@ library(DESeq2); library(tidyverse)
 taxfxn <- read_delim(file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/TaxonomicAndFunctionalAnnotations.csv") #
 # head(taxfxn)[1:3,]
 ```
+
 ## Import and reformat KEGG DB
+
 ```{r}
 kegg <- read.csv("../KEGG_DB/combined_kegg.csv")
 # dim(kegg)
+kegg <- kegg %>% select(KEGG = KO_number, everything(), -X)
 curated_kegg <- read.csv("../KEGG_DB/reformat-kegg-pfam-skh.csv")
-
+# head(kegg)
 key_geneid <- curated_kegg %>% 
   select(-X) %>% 
-  right_join(kegg %>% select(KEGG = KO_number, everything(), -X)) %>% 
   distinct() %>% 
+  right_join(kegg, multiple = "all", by = join_by(KEGG)) %>% 
   select(starts_with("KeggOrthology_"), Category01, Category02, FullName, GeneID, Gene_identification, KEGG, PFAM, Descriptions, REF = REFs)
+# glimpse(key_geneid)
 ```
 
 ```{r}
 # | eval: false
 load("/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/mcr-insitu_vent_vs_novent_DESeq.RData", verbose = TRUE)
 ```
-
 
 Tranform DEseq class information to a dataframe.
 
@@ -299,9 +305,6 @@ mcr_transcripts <- data.frame(results_mcr_annot) %>%
   rownames_to_column(var = "SequenceID")
 ```
 
-
-
-
 Load Rdata locally.
 
 ```{r}
@@ -312,7 +315,6 @@ load("input-docs/mcr_df_tax_means.RData", verbose = TRUE)
 ```
 
 ```{r}
-# glimpse(results_mcr_annot)
 glimpse(mcr_transcripts)
 ```
 
@@ -332,7 +334,6 @@ data.frame(mcr_transcripts) %>%
   labs(y = "log2 Fold Change", x = "Mean Normalized Counts")
 
 ```
-
 
 ```{r, fig.height=5, fig.width=6}
 # head(mcr_transcripts)
@@ -390,8 +391,6 @@ mcr_trans_wKEGG %>%
         axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, size = 6),
         axis.title = element_blank())
 ```
-
-
 
 ```{r}
 # | eval: false
@@ -467,7 +466,6 @@ head(mcr_trans_wKEGG)
 glimpse(mcr_trans_wKEGG)
 ```
 
-
 ```{r, fig.height=8, fig.width=4}
 # library(ggdist)
 mcr_trans_wKEGG %>%
@@ -487,58 +485,37 @@ mcr_trans_wKEGG %>%
   labs(y = "Transcript sum", x = "")
 ```
 
-
-```{r, fig.height=6, fig.width=7}
-# head(mcr_trans_wKEGG)
-# svg("plot-prelim-barplot.svg", h = 6, w = 7)
-# glimpse(mcr_trans_wKEGG)
-mcr_toplot <- mcr_trans_wKEGG %>% 
-  mutate(KEGG = str_remove(KEGG_ko, "ko:")) %>%
-  left_join(kegg)
-  select(starts_with("Kegg"), baseMean, log2FoldChange, REGULATION, SIGNIFICANT, KEGG, A:D, full_classification)
-dim(mcr_toplot)
-mcr_toplot %>%
-  group_by(KeggOrthology_A, REGULATION) %>% 
-    reframe(SUM = log2FoldChange, .groups = "rowwise") %>% 
-  select(LEVEL_NAME = KeggOrthology_A, SUM, REGULATION) %>%
-  add_column(CATEGORY = "Kegg level A") #%>% 
-
-  distinct() %>% 
-  ungroup() %>% 
-  add_row(mcr_toplot %>% ungroup() %>% 
-    group_by(KeggOrthology_B, REGULATION) %>% 
-      reframe(.by = SUM = log2FoldChange) %>% 
-    select(LEVEL_NAME = KeggOrthology_B, SUM, REGULATION) %>%
-    add_column(CATEGORY = "Kegg level B")) %>% 
-  ungroup() %>% 
-  add_row(mcr_toplot %>% ungroup() %>% 
-            left_join(taxa) %>% 
-            group_by(SUPERGROUP_18S, REGULATION) %>% 
-              reframe(SUM = as.numeric(log2FoldChange)) %>% 
-            select(LEVEL_NAME = SUPERGROUP_18S, SUM, REGULATION) %>% 
-            add_column(CATEGORY = "Supergroup")) %>% 
-  distinct() %>% 
-  ggplot(aes(x = CATEGORY, y = SUM, fill = LEVEL_NAME)) +
-    geom_bar(stat = "identity", position = "stack", width = 0.4) +
-   coord_flip() +
-  geom_hline(yintercept = 0) +
-  scale_fill_manual(values = all_taxa_metat_color) +
-  theme_classic() +
-  facet_grid(rows = vars(CATEGORY), scales = "free") +
-  theme(legend.position = "top",
-        strip.text = element_blank(),
-        axis.line.y = element_blank()) +
-  labs(y = "Transcript sum", x = "")
-# dev.off()
+```{r}
+glimpse(mcr_transcripts)
 ```
+Rejoin all transcript FC information with all annotations, including taxa.
 
 ```{r}
-save(mcr_trans_wKEGG, mcr_transcripts, file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/mcr_df_DE_annot.RData")
+mcr_alltranscripts_annot <- mcr_transcripts %>% 
+  left_join(taxfxn) %>% 
+  mutate(KEGG = str_remove_all(KEGG_ko, "ko:")) %>%
+  mutate(KEGG = strsplit(as.character(KEGG), ",")) %>% 
+    unnest(KEGG) %>% 
+  # left_join(kegg) %>% 
+  left_join(key_geneid) %>% 
+  left_join(taxa)
+glimpse(mcr_alltranscripts_annot)
 ```
 
 
 
+```{r}
+# save(mcr_alltranscripts_annot, file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/mcr_alltranscripts_annot.RData")
+# save(mcr_trans_wKEGG, mcr_transcripts, file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/mcr_df_DE_annot.RData")
+```
+
 # MCR a look a specific taxa
+
+```{r}
+
+```
+
+
 
 ```{r}
 # load("/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/mcr_df_DE_annot.RData", verbose = TRUE)
@@ -546,9 +523,26 @@ load("input-docs/mcr_df_DE_annot.RData", verbose = TRUE)
 # load("/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/mcr_df_tax_means.RData", verbose = TRUE)
 load("input-docs/mcr_df_tax_means.RData", verbose = TRUE)
 # dim(mcr_trans_wKEGG)
+
+load("input-docs/mcr_alltranscripts_annot.RData", verbose = TRUE)
+
+
+load("input-docs/mcr_annotated_mean", verbose = TRUE)
 dim(mcr_transcripts)
 head(mcr_transcripts)
 ```
+
+## Log FC & trends in key pathways
+```{r}
+glimpse(mcr_alltranscripts_annot)
+```
+
+## Ordination
+```{r}
+glimpse(mcr_annotated_mean)
+```
+
+
 
 # Session Information
 
