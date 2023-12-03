@@ -108,7 +108,6 @@ mcr_wtax_only <- mcr_df_for_tax %>%
 # save(mcr_annotated_mean, file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/mcr_annotated_mean.RData")
 ```
 
-
 ## Import MCR taxonomic data
 
 Pick up here locally!
@@ -266,12 +265,13 @@ kegg <- read.csv("../KEGG_DB/combined_kegg.csv")
 # dim(kegg)
 kegg <- kegg %>% select(KEGG = KO_number, everything(), -X)
 curated_kegg <- read.csv("../KEGG_DB/reformat-kegg-pfam-skh.csv")
-# head(kegg)
-key_geneid <- curated_kegg %>% 
-  select(-X) %>% 
+head(curated_kegg)
+
+key_geneid <- kegg %>% 
   distinct() %>% 
-  right_join(kegg, multiple = "all", by = join_by(KEGG)) %>% 
+  left_join(curated_kegg, multiple = "all", by = join_by(KEGG)) %>% 
   select(starts_with("KeggOrthology_"), Category01, Category02, FullName, GeneID, Gene_identification, KEGG, PFAM, Descriptions, REF = REFs)
+# head(curated_kegg)
 # glimpse(key_geneid)
 ```
 
@@ -373,15 +373,11 @@ upreg_10 <- mcr_trans_wKEGG %>%
 glimpse(mcr_alltranscripts_annot)
 ```
 
-
 ```{r}
 glimpse(mcr_alltranscripts_annot)
 unique(taxa$SUPERGROUP_18S)
 # range(mcr_alltranscripts_annot$)
 ```
-
-
-
 
 ```{r}
 # | eval: false
@@ -479,6 +475,7 @@ mcr_trans_wKEGG %>%
 ```{r}
 glimpse(mcr_transcripts)
 ```
+
 Rejoin all transcript FC information with all annotations, including taxa.
 
 ```{r}
@@ -492,8 +489,6 @@ mcr_alltranscripts_annot <- mcr_transcripts %>%
   left_join(taxa)
 glimpse(mcr_alltranscripts_annot)
 ```
-
-
 
 ```{r}
 # save(mcr_alltranscripts_annot, file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/mcr_alltranscripts_annot.RData")
@@ -509,8 +504,6 @@ library(tidyverse)
 # library(DESeq2)
 ```
 
-
-
 ```{r}
 # load("/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/mcr_df_DE_annot.RData", verbose = TRUE)
 load("input-docs/mcr_df_DE_annot.RData", verbose = TRUE)
@@ -520,12 +513,19 @@ load("input-docs/mcr_df_tax_means.RData", verbose = TRUE)
 
 load("input-docs/mcr_alltranscripts_annot.RData", verbose = TRUE)
 
+load("/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/mcr_annotated_mean.RData", verbose = TRUE)
 load("input-docs/mcr_annotated_mean.RData", verbose = TRUE)
 dim(mcr_transcripts)
 head(mcr_transcripts)
 ```
 
+```{r}
+library(tidyverse)
+```
+
+
 ## Log FC & trends in key pathways
+
 ```{r}
 glimpse(mcr_alltranscripts_annot)
 ```
@@ -559,7 +559,9 @@ mcr_alltranscripts_annot %>%
         # axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, size = 6),
         # axis.title = element_blank())
 ```
+
 option from: https://stackoverflow.com/questions/35511951/r-ggplot2-collapse-or-remove-segment-of-y-axis-from-scatter-plot
+
 ```{r}
 library(scales)
 squish_trans <- function(from, to, factor) {
@@ -599,11 +601,9 @@ squish_trans <- function(from, to, factor) {
 }
 ```
 
-
 ```{r}
 unique(mcr_alltranscripts_annot$SUPERGROUP_18S)
 ```
-
 
 ```{r, fig.height=4, fig.width=12}
 tax_select_LOTS <- c("Alveolata-Dinoflagellata","Alveolata-Ciliophora", "Rhizaria-Radiolaria","Stramenopiles-Opalozoa;Sagenista","Amoebozoa", "Excavata", "Apusozoa")
@@ -635,13 +635,14 @@ mcr_alltranscripts_annot %>%
 ```
 
 ## Summary of means
+
 ```{r}
 glimpse(mcr_annotated_mean)
 ```
+
 ```{r}
 metadata <- read_delim(file = "input-docs/sample_merged_txi.txt")
 ```
-
 
 ```{r}
 tax_select <- c("Alveolata-Ciliophora", "Amoebozoa", "Excavata")
@@ -658,28 +659,38 @@ mcr_toplot <- mcr_annotated_mean %>%
   pivot_longer(cols = starts_with("mean."), names_to = "TMP", values_to = "COUNTS") %>% 
   mutate(SampleName = str_remove_all(TMP, "mean.")) %>% 
   left_join(metadata %>% filter(grepl("MCR_*_", SampleName)) %>% 
-  mutate(SampleName = str_remove_all(SampleName, "MCR_\\d{1,2}_")))
+    mutate(SampleName = str_remove_all(SampleName, "MCR_\\d{1,2}_")))
 ```
 
 ```{r}
-glimpse(mcr_toplot)
+head(mcr_toplot)
+range(mcr_toplot$COUNTS)
+```
+
+
+```{r}
+# glimpse(mcr_toplot)
+tax_rm <- c("Unknown Eukaryota", "Other Alveolata", "Other-metaT only")
+tax_select <- c("Alveolata-Ciliophora", "Apusozoa", "Amoebozoa", "Excavata")
+# unique(mcr_toplot$EXP)
+for_hets_mean <- mcr_toplot %>% 
+  filter(!is.na(Category01)) %>%
+  filter(EXP == "insitu") %>% 
+  filter(!(SUPERGROUP_18S %in% tax_rm)) %>% 
+  filter(SUPERGROUP_18S %in% tax_select) %>% 
+  filter(Category01 == "Phagotrophy") %>% 
+  group_by(GeneID, SUPERGROUP_18S, VENT, FIELDYR, TYPE, TYPE_BIN,
+           Category01, Category02) %>% 
+    summarise(MEAN_COUNT = mean(COUNTS))
 ```
 
 SEPARTE BY SAMPLE NAME TO GET SAMPLE SPECIFIC HETEROTROPHY PATTERNS.
 
 ```{r, fig.height=5, fig.width=15}
 pink_qual <- c("#fff7f3", "#fcc5c0", "#fa9fb5","#f768a1","#dd3497", "#ae017e", "#7a0177")
-tax_rm <- c("Unknown Eukaryota", "Other Alveolata", "Other-metaT only")
-tax_select <- c("Alveolata-Ciliophora", "Apusozoa", "Amoebozoa", "Excavata")
-mcr_toplot %>% 
-  filter(!is.na(Category01)) %>%
-  filter(!(SUPERGROUP_18S %in% tax_rm)) %>% 
-  filter(SUPERGROUP_18S %in% tax_select) %>% 
-  filter(Category01 == "Phagotrophy") %>% 
-  group_by(GeneID, SUPERGROUP_18S, VENT, FIELDYR, TYPE, TYPE_BIN, Sample) %>% 
-    summarise(SUM = sum(COUNT)) %>% head
 
-  ggplot(aes(x = GeneID, y = SUPERGROUP_18S, fill = log2FoldChange, color = SIGNIFICANT)) +
+for_hets_mean %>% 
+  ggplot(aes(x = GeneID, y = VENT, fill = MEAN_COUNT)) +
   geom_tile(stat = "identity", linewidth = 0.6) +
   scale_color_manual(values = c("white", "black")) +
       scale_fill_stepsn(
@@ -694,12 +705,46 @@ mcr_toplot %>%
         axis.title = element_blank())
 ```
 
-## Ordination
+SEPARATE BY CATEGORY 1 and supergroup
+
 ```{r}
-glimpse(mcr_annotated_mean)
+# tax_select <- c("Alveolata-Ciliophora", "Amoebozoa", "Excavata")
+subset_tax <- c("Alveolata-Ciliophora", "Alveolata-Dinoflagellata", "Other Alveolata", "Amoebozoa", "Apusozoa", "Archaeplastida","Excavata", "Hacrobia", "Rhizaria-Cercozoa",  "Rhizaria-Radiolaria","Rhizaria",  "Stramenopiles", "Stramenopiles-Ochrophyta","Stramenopiles-Opalozoa;Sagenista",  "Opisthokonta")
+
+mcr_all <- mcr_annotated_mean %>% 
+  left_join(taxa) %>% 
+  filter(SUPERGROUP_18S %in% subset_tax) %>% 
+  mutate(KEGG = str_remove_all(KEGG_ko, "ko:")) %>%
+  mutate(KEGG = strsplit(as.character(KEGG), ",")) %>% 
+  mutate(KEGG = as.character(KEGG)) %>% 
+  left_join(key_geneid) %>% 
+  filter(!is.na(Category01)) %>% 
+  select(starts_with("mean."), Domain:PFAM) %>% 
+  pivot_longer(cols = starts_with("mean."), names_to = "TMP", values_to = "COUNTS") %>% 
+  mutate(SampleName = str_remove_all(TMP, "mean.")) %>% 
+  left_join(metadata %>% 
+              filter(grepl("MCR_*_", SampleName)) %>% 
+              mutate(SampleName = str_remove_all(SampleName, "MCR_\\d{1,2}_"))) %>% 
+  filter(EXP == "insitu") %>% 
+    group_by(GeneID, SUPERGROUP_18S, VENT, FIELDYR, TYPE, TYPE_BIN, Category01, Category02) %>% 
+    summarise(MEAN_COUNT = mean(COUNTS))
+  
+```
+```{r}
+# dim(mcr_all)
+# head(mcr_all)
+# unique(mcr_all$SUPERGROUP_18S)
+# dim(for_hets_mean)
+head(for_hets_mean)
+save(for_hets_mean, mcr_all, file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/for-plots-mcr.RData")
 ```
 
 
+## Ordination
+
+```{r}
+glimpse(mcr_annotated_mean)
+```
 
 # Session Information
 
