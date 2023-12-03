@@ -312,6 +312,7 @@ Load Rdata locally.
 load("input-docs/mcr_df_DE_annot.RData", verbose = TRUE)
 # load("/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/mcr_df_tax_means.RData", verbose = TRUE)
 load("input-docs/mcr_df_tax_means.RData", verbose = TRUE)
+load("input-docs/mcr_alltranscripts_annot.RData", verbose = TRUE)
 ```
 
 ```{r}
@@ -337,7 +338,7 @@ data.frame(mcr_transcripts) %>%
 
 ```{r, fig.height=5, fig.width=6}
 # head(mcr_transcripts)
-data.frame(mcr_trans_wKEGG) %>% 
+data.frame(mcr_alltranscripts_annot) %>% 
   mutate(KEGG = str_remove(KEGG_ko, "ko:")) %>%
   left_join(key_geneid) %>% 
   filter(!is.na(Category01)) %>% 
@@ -358,39 +359,29 @@ What are the highly significant and represented transcripts for both sides?
 ```{r}
 upreg_10 <- mcr_trans_wKEGG %>% 
   filter(SIGNIFICANT == "Significantly") %>% 
-    # filter(abs(log2FoldChange) > 10) %>% 
+    # filter(abs(log2FoldChange) > 10) %>%
   mutate(KEGG = str_remove(KEGG_ko, "ko:")) %>%
   left_join(key_geneid) %>% 
   filter(!is.na(Category01)) %>% 
-  left_join(taxa)
-glimpse(upreg_10)
-# unique(upreg_10$Category01)
-# range(upreg_10$baseMean)
+  left_join(taxa) %>% 
+  select(REGULATION, SIGNIFICANT, PFAMs, full_classification,
+         A:D, Gene_identification, Category01, Category02, FullName, GeneID) %>% 
+  distinct()
 ```
 
-```{r, fig.height=5, fig.width=6}
-pink_qual <- c("#fff7f3", "#fcc5c0", "#fa9fb5","#f768a1","#dd3497", "#ae017e", "#7a0177")
-mcr_trans_wKEGG %>% 
-  mutate(KEGG = str_remove(KEGG_ko, "ko:")) %>%
-  left_join(key_geneid) %>% 
-  left_join(taxa) %>% 
-  filter(!is.na(Category01)) %>%
-  filter(Category01 == "Phagotrophy") %>% 
-  ggplot(aes(x = GeneID, y = SUPERGROUP_18S, fill = log2(baseMean), color = SIGNIFICANT)) +
-  geom_tile(stat = "identity", size = 0.6) +
-  scale_color_manual(values = c("black", "white")) +
-      scale_fill_stepsn(
-      # limits = c(-5,5),
-      # breaks = c(0.0, 3.5, 7.0, 10.5),
-      show.limits = TRUE,
-      colors = pink_qual) +
-  # coord_fixed(ratio = 1) +
-  facet_grid(cols = vars(Category01), rows = vars(REGULATION)) + 
-  theme_classic() +
-  theme(axis.text = element_text(color = "black"),
-        axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, size = 6),
-        axis.title = element_blank())
+```{r}
+glimpse(mcr_alltranscripts_annot)
 ```
+
+
+```{r}
+glimpse(mcr_alltranscripts_annot)
+unique(taxa$SUPERGROUP_18S)
+# range(mcr_alltranscripts_annot$)
+```
+
+
+
 
 ```{r}
 # | eval: false
@@ -512,7 +503,10 @@ glimpse(mcr_alltranscripts_annot)
 # MCR a look a specific taxa
 
 ```{r}
-
+# | message: false
+library(tidyverse)
+# library(tximport)
+# library(DESeq2)
 ```
 
 
@@ -526,8 +520,7 @@ load("input-docs/mcr_df_tax_means.RData", verbose = TRUE)
 
 load("input-docs/mcr_alltranscripts_annot.RData", verbose = TRUE)
 
-
-load("input-docs/mcr_annotated_mean", verbose = TRUE)
+load("input-docs/mcr_annotated_mean.RData", verbose = TRUE)
 dim(mcr_transcripts)
 head(mcr_transcripts)
 ```
@@ -535,6 +528,170 @@ head(mcr_transcripts)
 ## Log FC & trends in key pathways
 ```{r}
 glimpse(mcr_alltranscripts_annot)
+```
+
+```{r, fig.height=5, fig.width=11}
+tax_select <- c("Alveolata-Ciliophora", "Amoebozoa", "Excavata")
+fxn_colors <- c("#67000d",  "#ffffcc","#feb24c",  "#253494", "#9e9ac8", "#238b45", "#54278f",  "#99d8c9", "#fee391", "#cc4c02", "#9ebcda","#ccece6", "#8c96c6","#fcbba1")
+mcr_alltranscripts_annot %>% 
+  filter(!is.na(Category01)) %>%
+  filter(!is.na(REGULATION)) %>% 
+  filter(!(SUPERGROUP_18S %in% tax_rm)) %>% 
+  filter(SUPERGROUP_18S %in% tax_select) %>% 
+  filter(Category01 == "Phagotrophy") %>% 
+  ggplot(aes(x = baseMean, y = log2FoldChange, shape = SIGNIFICANT, fill = Category02, color = Category02)) +
+  geom_point(stat = "identity") +
+    scale_x_log10() +
+    theme_classic() +
+  # scale_color_manual(values = c("white", "black")) +
+  # scale_alpha_manual(values = c(0.2, 1)) +
+    scale_fill_manual(values = fxn_colors) +
+    scale_color_manual(values = fxn_colors) +
+  scale_shape_manual(values = c(19, 21)) +
+    theme(legend.position = "right", legend.title = element_blank(),
+        axis.text = element_text(color = "black", size = 12, face = "bold"),
+        axis.title = element_text(color = "black", size = 12, face = "bold"),
+        strip.text = element_text(color = "black", size = 12, face = "bold")) +
+    labs(y = "log2 Fold Change", x = "Mean Normalized Counts") +
+  facet_grid(cols = vars(SUPERGROUP_18S), space = "free_x", scales = "free_x")
+  # theme_classic() +
+  # theme(axis.text = element_text(color = "black"),
+        # axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, size = 6),
+        # axis.title = element_blank())
+```
+option from: https://stackoverflow.com/questions/35511951/r-ggplot2-collapse-or-remove-segment-of-y-axis-from-scatter-plot
+```{r}
+library(scales)
+squish_trans <- function(from, to, factor) {
+  
+  trans <- function(x) {
+    
+    if (any(is.na(x))) return(x)
+
+    # get indices for the relevant regions
+    isq <- x > from & x < to
+    ito <- x >= to
+    
+    # apply transformation
+    x[isq] <- from + (x[isq] - from)/factor
+    x[ito] <- from + (to - from)/factor + (x[ito] - to)
+    
+    return(x)
+  }
+
+  inv <- function(x) {
+    
+    if (any(is.na(x))) return(x)
+
+    # get indices for the relevant regions
+    isq <- x > from & x < from + (to - from)/factor
+    ito <- x >= from + (to - from)/factor
+    
+    # apply transformation
+    x[isq] <- from + (x[isq] - from) * factor
+    x[ito] <- to + (x[ito] - (from + (to - from)/factor))
+    
+    return(x)
+  }
+  
+  # return the transformation
+  return(trans_new("squished", trans, inv))
+}
+```
+
+
+```{r}
+unique(mcr_alltranscripts_annot$SUPERGROUP_18S)
+```
+
+
+```{r, fig.height=4, fig.width=12}
+tax_select_LOTS <- c("Alveolata-Dinoflagellata","Alveolata-Ciliophora", "Rhizaria-Radiolaria","Stramenopiles-Opalozoa;Sagenista","Amoebozoa", "Excavata", "Apusozoa")
+fxn_colors <- c("#67000d",  "pink","#238b45", "#feb24c",  "#253494", "#9e9ac8", "#54278f",  "#99d8c9", "#fee391", "#cc4c02", "#9ebcda","#ccece6", "#8c96c6","#fcbba1")
+mcr_alltranscripts_annot %>% 
+  filter(!is.na(Category01)) %>%
+  filter(!is.na(REGULATION)) %>% 
+  # filter(!(SUPERGROUP_18S %in% tax_rm)) %>% 
+  filter(SUPERGROUP_18S %in% tax_select_LOTS) %>% 
+  # filter(Category01 == "Phagotrophy") %>% 
+  ggplot(aes(x = SUPERGROUP_18S_ORDER, y = log2FoldChange, fill = SUPERGROUP_18S_ORDER)) +
+  # geom_jitter(stat = "identity") +
+  # ggdist::stat_slabinterval(side = "left") +
+  ggdist::stat_histinterval(slab_color = "gray45", outline_bars = FALSE) +
+  # ggdist::stat_dots(position = "dodgejust", quantiles = 50) +
+    scale_fill_manual(values = fxn_colors) +
+    theme_classic() +
+  scale_y_continuous(
+    # trans = squish_trans(abs(10), abs(20), 10),
+    breaks = c(-20, -10, -8, -6, -2, 0, 2, 4, 6, 8, 10, 20)) +
+    # breaks = seq(-20, 20, by = 10)) +
+  scale_shape_manual(values = c(19, 21)) +
+    theme(legend.position = "none", legend.title = element_blank(),
+        axis.text = element_text(color = "black", size = 12, face = "bold"),
+        axis.title = element_text(color = "black", size = 12, face = "bold"),
+        strip.text = element_text(color = "black", size = 12, face = "bold")) +
+    labs(y = "log2 Fold Change", x = "")
+  # facet_grid(cols = vars(SUPERGROUP_18S), space = "free_x", scales = "free_x")
+```
+
+## Summary of means
+```{r}
+glimpse(mcr_annotated_mean)
+```
+```{r}
+metadata <- read_delim(file = "input-docs/sample_merged_txi.txt")
+```
+
+
+```{r}
+tax_select <- c("Alveolata-Ciliophora", "Amoebozoa", "Excavata")
+
+mcr_toplot <- mcr_annotated_mean %>% 
+  left_join(taxa) %>% 
+  filter(SUPERGROUP_18S %in% tax_select) %>% 
+  mutate(KEGG = str_remove_all(KEGG_ko, "ko:")) %>%
+  mutate(KEGG = strsplit(as.character(KEGG), ",")) %>% 
+  mutate(KEGG = as.character(KEGG)) %>% 
+  left_join(key_geneid) %>% 
+  filter(!is.na(Category01)) %>% 
+  select(starts_with("mean."), Domain:PFAM) %>% 
+  pivot_longer(cols = starts_with("mean."), names_to = "TMP", values_to = "COUNTS") %>% 
+  mutate(SampleName = str_remove_all(TMP, "mean.")) %>% 
+  left_join(metadata %>% filter(grepl("MCR_*_", SampleName)) %>% 
+  mutate(SampleName = str_remove_all(SampleName, "MCR_\\d{1,2}_")))
+```
+
+```{r}
+glimpse(mcr_toplot)
+```
+
+SEPARTE BY SAMPLE NAME TO GET SAMPLE SPECIFIC HETEROTROPHY PATTERNS.
+
+```{r, fig.height=5, fig.width=15}
+pink_qual <- c("#fff7f3", "#fcc5c0", "#fa9fb5","#f768a1","#dd3497", "#ae017e", "#7a0177")
+tax_rm <- c("Unknown Eukaryota", "Other Alveolata", "Other-metaT only")
+tax_select <- c("Alveolata-Ciliophora", "Apusozoa", "Amoebozoa", "Excavata")
+mcr_toplot %>% 
+  filter(!is.na(Category01)) %>%
+  filter(!(SUPERGROUP_18S %in% tax_rm)) %>% 
+  filter(SUPERGROUP_18S %in% tax_select) %>% 
+  filter(Category01 == "Phagotrophy") %>% 
+  group_by(GeneID, SUPERGROUP_18S, VENT, FIELDYR, TYPE, TYPE_BIN, Sample) %>% 
+    summarise(SUM = sum(COUNT)) %>% head
+
+  ggplot(aes(x = GeneID, y = SUPERGROUP_18S, fill = log2FoldChange, color = SIGNIFICANT)) +
+  geom_tile(stat = "identity", linewidth = 0.6) +
+  scale_color_manual(values = c("white", "black")) +
+      scale_fill_stepsn(
+      # limits = c(-5,5),
+      # breaks = c(0.0, 3.5, 7.0, 10.5),
+      show.limits = TRUE,
+      colors = pink_qual) +
+  facet_grid(cols = vars(Category01, Category02), space = "free_x", scales = "free_x") + 
+  theme_classic() +
+  theme(axis.text = element_text(color = "black"),
+        axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, size = 6),
+        axis.title = element_blank())
 ```
 
 ## Ordination
