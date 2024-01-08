@@ -2,6 +2,8 @@
 title: "Vent metatranscriptome"
 format: html
 editor: visual
+editor_options: 
+  chunk_output_type: console
 ---
 
 # Set up
@@ -21,10 +23,6 @@ load(file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/all_sa
 ```
 
 `mean_counts_df`: mean of scaled TPM from tximport command. This is the correct TPM values that incorporate transcript length. When replicates were run across different flow cells (REP 1 vs. REP 2), these were averaged. Rownames equal the transcript IDs.
-
-```{r}
-glimpse(mean_counts_df)
-```
 
 ```{r}
 taxfxn <- read.table("/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/TaxonomicAndFunctionalAnnotations.csv", header = TRUE, sep = "\t")
@@ -50,6 +48,9 @@ dim(taxfxn)
 # head(taxfxn$SequenceID)
 # head(row.names(mean_counts_df))
 ```
+```{r}
+colnames(mean_counts_df)
+```
 
 
 
@@ -58,34 +59,60 @@ dim(taxfxn)
 ```{r}
 # colnames(mean_counts_df)
 long_df <- mean_counts_df %>% 
+  rowwise() %>% 
+  mutate(NUM_ZERO = sum(c_across(starts_with("mean.")) == 0)) %>% 
   rownames_to_column(var = "SequenceID") %>% 
   pivot_longer(cols = starts_with("mean."), values_to = "scaledTPM") %>% 
   filter(scaledTPM > 0) %>% 
-  separate(name, c("mean.field", "NUM", "fieldyear", "LOCATION", "SAMPLETYPE", "SAMPLEID"), "_", 
+  separate(name, c("mean.field", "LIBRARY_NUM", "fieldyear", "LOCATION", "SAMPLETYPE", "SAMPLEID"), "_", 
         remove = FALSE) %>% 
+  select(-mean.field, -name) %>% 
   mutate(VENT_FIELD = case_when(grepl("Piccard", fieldyear) ~ "Piccard",
                            grepl("VonDamm", fieldyear) ~ "Von Damm",
          grepl("Axial", fieldyear) ~ "Axial",
          grepl("Gorda", fieldyear) ~ "Gorda Ridge")) %>% 
   mutate(VENT_BIN = case_when(
-    (LOCATION == "Background" | LOCATION == "Plume") ~ "Non-vent",
+    (LOCATION == "Background" | LOCATION == "Plume" | LOCATION == "BSW") ~ "Non-vent",
+    grepl("IntlDistrict", LOCATION) ~ "Non-vent", 
+    grepl("ASHES", LOCATION) ~ "Non-vent", 
     TRUE ~ "Vent"
   ))
-
+glimpse(long_df)
 ```
 
-## Add in tax and fxn
+## Join with tax and fxn
 
 ```{r}
 # glimpse(taxfxn)
 long_df_annot <- long_df %>% 
-  left_join(taxfxn, by = "SequenceID")
+  left_join(taxfxn, by = "SequenceID") %>% 
+  separate(full_classification, c("Domain", "Supergroup", "Phylum", "Class", "Order", "Family", "Genus_spp"), sep = "; ", remove = FALSE) %>% 
+  mutate(SUPERGROUP_18S = case_when(
+    Phylum == "Ciliophora" ~ "Alveolata-Ciliophora",
+    Phylum == "Dinophyta" ~ "Alveolata-Dinoflagellata",
+    # Phylum == "Perkinsea" ~ "Protalveolata",
+    # Phylum == "Colponemidia" ~ "Protalveolata",
+    # Phylum == "Chromerida" ~ "Protalveolata",
+    Supergroup == "Alveolata" ~ "Other Alveolata",
+    Supergroup %in% as_is ~ Supergroup,
+    Supergroup == "Haptista" ~ "Hacrobia",
+    Phylum == "Radiolaria" ~ "Rhizaria-Radiolaria",
+    Phylum == "Cercozoa" ~ "Rhizaria-Cercozoa",
+    (Supergroup == "Rhizaria" & Phylum != "Radiolaria" & Phylum != "Cercozoa") ~ "Rhizaria",
+    Order == "Bigyra" ~ "Stramenopiles-Opalozoa;Sagenista",
+    Class == "Ochromonadales" ~ "Stramenopiles-Ochrophyta",
+    Supergroup == "Stramenopiles" ~ "Stramenopiles",
+    Supergroup == "Opisthokonta" ~ "Opisthokonta",
+    (is.na(Supergroup) | Supergroup == "Eukaryota incertae sedis") ~ "Unknown Eukaryota",
+    TRUE ~ "Other-metaT only"))
+# head(long_df_annot)
 dim(long_df_annot);dim(long_df)
 ```
 
 ```{r}
 save(long_df, long_df_annot, file = "tmp_longdf.RData")
 ```
+
 
 # Shared vs. unique
 
@@ -95,6 +122,7 @@ Starting with long dataframe. What transcripts are shared vs unique across vent 
 library(ggupset)
 ```
 
+Everything.
 
 ```{r}
 long_df %>% 
@@ -104,13 +132,71 @@ long_df %>%
   ggplot(aes(x = SAMPLE)) +
     scale_x_upset(n_intersections = 35)
 ```
-Repeat ggupset above, but with annotated vs. not. Domain, and other simple annotations?
+```{r}
+head(long_df_annot)
+```
 
+
+```{r}
+long_df_annot %>% 
+  unite(SAMPLE_NAME, VENT_BIN, VENT_FIELD, LOCATION, sep = " ", remove = FALSE) %>% 
+  mutate(FXN_BIN = case_when(
+    KEGG_ko == "-" ~ "No gene ID",
+    TRUE ~ "Gene ID assigned")) %>% 
+  # mutate(TAX_BIN = case_when())
+  group_by(SequenceID, FXN_BIN) %>% 
+    summarise(SAMPLE = list(SAMPLE_NAME)) %>% 
+  ggplot(aes(x = SAMPLE, fill = FXN_BIN)) +
+    ggupset::scale_x_upset()
+```
+
+```{r}
+long_df_annot %>% 
+  filter(VENT_BIN == "Vent") %>% 
+  unite(SAMPLE_NAME, VENT_BIN, VENT_FIELD, LOCATION, sep = " ", remove = FALSE) %>% 
+  mutate(FXN_BIN = case_when(
+    KEGG_ko == "-" ~ "No gene ID",
+    TRUE ~ "Gene ID assigned")) %>% 
+  # mutate(TAX_BIN = case_when())
+  group_by(SequenceID, FXN_BIN) %>% 
+    summarise(SAMPLE = list(SAMPLE_NAME)) %>% 
+  ggplot(aes(x = SAMPLE, fill = FXN_BIN)) +
+    ggupset::scale_x_upset()
+```
 
 ## What are these unique transcripts?
+
+```{r}
+glimpse(long_df_annot)
+```
+
+How many zeros are there?
+```{r}
+
+
+```
+```{r}
+load("tmp_longdf.RData")
+```
+
+```{r}
+table(long_df_annot$NUM_ZERO)
+library(tidyverse)
+ggplot(long_df_annot, aes(x = NUM_ZERO, y = scaledTPM)) +
+  geom_point(stat = "identity")
+```
 
 ## Re-do, but with shared subset
 
 # Taxonomic breakdown
 
+## Dendrogram by taxa
+
 # Functional breakdown
+
+## Dendrogram by function
+
+# PCA-ordination
+
+Use vent samples only, across vent fields are OK.
+
