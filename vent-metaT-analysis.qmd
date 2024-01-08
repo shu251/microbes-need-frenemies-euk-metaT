@@ -1,0 +1,116 @@
+---
+title: "Vent metatranscriptome"
+format: html
+editor: visual
+---
+
+# Set up
+
+Library
+
+```{r}
+library(tidyverse)
+library(DESeq2)
+library(tximport)
+```
+
+# Import data
+
+```{r}
+load(file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/all_samples_vent_metaT.RData", verbose = TRUE)
+```
+
+`mean_counts_df`: mean of scaled TPM from tximport command. This is the correct TPM values that incorporate transcript length. When replicates were run across different flow cells (REP 1 vs. REP 2), these were averaged. Rownames equal the transcript IDs.
+
+```{r}
+glimpse(mean_counts_df)
+```
+
+```{r}
+taxfxn <- read.table("/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/TaxonomicAndFunctionalAnnotations.csv", header = TRUE, sep = "\t")
+# taxfxn <- read.table("/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/TaxonomicAndFunctionalAnnotations.csv", header = TRUE, nrows = 250, sep = "\t")
+```
+
+Set transcript IDs to annotated vs. not annotated.
+```{r}
+# tx2gene_in <- taxfxn %>% 
+#   dplyr::mutate(SEQ_ID = stringr::str_remove(SequenceID, ".p[:digit:]$"))
+```
+
+## Get basic data stats
+
+Total number of transcripts = 1,552,270.
+```{r}
+# length(rownames(mean_counts_df))
+length(unique(rownames(mean_counts_df)))
+```
+1,718,923 total entries in the tax function output from eukrhythmic.
+```{r}
+dim(taxfxn)
+# head(taxfxn$SequenceID)
+# head(row.names(mean_counts_df))
+```
+
+
+
+## Make long dataframe
+
+```{r}
+# colnames(mean_counts_df)
+long_df <- mean_counts_df %>% 
+  rownames_to_column(var = "SequenceID") %>% 
+  pivot_longer(cols = starts_with("mean."), values_to = "scaledTPM") %>% 
+  filter(scaledTPM > 0) %>% 
+  separate(name, c("mean.field", "NUM", "fieldyear", "LOCATION", "SAMPLETYPE", "SAMPLEID"), "_", 
+        remove = FALSE) %>% 
+  mutate(VENT_FIELD = case_when(grepl("Piccard", fieldyear) ~ "Piccard",
+                           grepl("VonDamm", fieldyear) ~ "Von Damm",
+         grepl("Axial", fieldyear) ~ "Axial",
+         grepl("Gorda", fieldyear) ~ "Gorda Ridge")) %>% 
+  mutate(VENT_BIN = case_when(
+    (LOCATION == "Background" | LOCATION == "Plume") ~ "Non-vent",
+    TRUE ~ "Vent"
+  ))
+
+```
+
+## Add in tax and fxn
+
+```{r}
+# glimpse(taxfxn)
+long_df_annot <- long_df %>% 
+  left_join(taxfxn, by = "SequenceID")
+dim(long_df_annot);dim(long_df)
+```
+
+```{r}
+save(long_df, long_df_annot, file = "tmp_longdf.RData")
+```
+
+# Shared vs. unique
+
+Starting with long dataframe. What transcripts are shared vs unique across vent fields and  within or outside of the vent fields.
+
+```{r}
+library(ggupset)
+```
+
+
+```{r}
+long_df %>% 
+  unite(SAMPLE_NAME, VENT_BIN, VENT_FIELD, LOCATION, sep = " ", remove = FALSE) %>% 
+  group_by(SequenceID) %>% 
+    summarise(SAMPLE = list(SAMPLE_NAME)) %>% 
+  ggplot(aes(x = SAMPLE)) +
+    scale_x_upset(n_intersections = 35)
+```
+Repeat ggupset above, but with annotated vs. not. Domain, and other simple annotations?
+
+
+## What are these unique transcripts?
+
+## Re-do, but with shared subset
+
+# Taxonomic breakdown
+
+# Functional breakdown

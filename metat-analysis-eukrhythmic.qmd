@@ -187,17 +187,39 @@ subsetTxi <- function(txi, samples, include_genes=rownames(txi$counts))
 
 To execute the above code for this project, see `scripts/subset-txi.R`.
 
-## Extract count tables for analysis
+Explanation of outputs:
+
+
+# Analyze samples _in situ_ 
 
 ```{r}
+load(file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/txi-allsamples.RData", verbose = TRUE)
+```
+
+
+```
+txi_euk_annot <- subsetTxi(txi, all_no_tf, euks_annot_only)
+txi_euk_only <- subsetTxi(txi, all_no_tf, euks_only)
+```
+
+
+## Extract count tables for analyses
+
+```{r}
+txi <- txi_euk_annot
+
+library(tximport)
+
 counts_scaled <- makeCountsFromAbundance(
   as.matrix(txi$counts),
   as.matrix(txi$abundance),
   as.matrix(txi$length),
   countsFromAbundance = "scaledTPM"
+  # countsFromAbundance = "lengthScaledTPM"
 )
-
+# ?makeCountsFromAbundance()
 counts_df <- as.data.frame(counts_scaled)
+# colnames(counts_df)
 ```
 
 Rename so replicates have the same name for counts
@@ -221,10 +243,44 @@ mean_counts_df <- counts_df %>%
   select(starts_with("mean"))
 ```
 
+
+Export for downstream analysis
+```{r}
+glimpse(mean_counts_df)
+```
+
+```{r}
+save(mean_counts_df, file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/all_samples_vent_metaT.RData")
+```
+
+
+```{r}
+# head(taxfxn)
+```
+
+
+# Log FC for whole dataset
+
 Extract centered data
 
 ```{r}
+#| warning: false
+#| message: false
+
+# if (!require("BiocManager", quietly = TRUE))
+    # install.packages("BiocManager")
+# BiocManager::install("DESeq2")
+library(DESeq2)
+```
+
+Get logFC for Vent versus non-vent and for plume versus background.
+`scripts/subset-txi.R`
+`scripts/subset-txi_Plume-v-BSW.R`
+
+
+```{r}
 # output is a DESeqtransform object
+# ?vst()
 vsd_all <- vst(ds_tpm_samplename)
 
 # make a transformed count matrix
