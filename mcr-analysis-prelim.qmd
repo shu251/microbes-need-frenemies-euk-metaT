@@ -10,7 +10,7 @@ editor: visual
 # | message: false
 library(tidyverse)
 # library(tximport)
-library(DESeq2)
+# library(DESeq2)
 ```
 
 Import MCR data from TXI subset.
@@ -22,6 +22,8 @@ load(file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/txi-mc
 ```
 
 ## Scaled data frame
+
+Using the tximport library, we can `makeCountsFromAbundance` to be used in downstream analysis.
 
 ```{r}
 # | eval: false
@@ -37,7 +39,7 @@ mcr_df_scaled <- as.data.frame(mcr_counts_scaled)
 
 ## Count table
 
-Strip column names of replicate information. Ready column headers for averaging across replicates.
+Strip column names of replicate information. During sequencing, samples were loaded on separate lanes. We also included replicates in the metatranscriptome library submission. Ready column headers for averaging across replicates.
 
 ```{r}
 # | eval: false
@@ -148,9 +150,6 @@ mcr_wtax_supergroup <- mcr_wtax_only %>%
 # head(mcr_wtax_supergroup)
 ```
 
-```{r}
-# table(mcr_wtax_supergroup$SUPERGROUP)
-```
 
 ```{r}
 mcr_wtax_supergroup %>% 
@@ -165,7 +164,7 @@ mcr_wtax_supergroup %>%
 
 ```{r}
 all_taxa_metat_order <- c("Alveolata-Ciliophora", "Alveolata-Dinoflagellata", "Other Alveolata", "Amoebozoa", "Apusozoa", "Archaeplastida","Excavata", "Hacrobia", "Rhizaria-Cercozoa",  "Rhizaria-Radiolaria","Rhizaria",  "Stramenopiles", "Stramenopiles-Ochrophyta","Stramenopiles-Opalozoa;Sagenista",  "Opisthokonta", "Other-metaT only", "Unknown Eukaryota")
-all_taxa_metat_color = c("#fa9fb5", "#c51b8a", "#1d91c0","#67000d", "#ef3b2c", "#ffffcc","#feb24c",  "#c7e9b4",  "#253494", "#9e9ac8","lightblue", "#238b45", "#54278f", "#bdbdbd", "#fee6ce", "#cb181d", "#000000")
+all_taxa_metat_color = c("#fa9fb5", "#c51b8a", "#1d91c0","#67000d", "#ef3b2c", "#ffffcc","#feb24c",  "#c7e9b4",  "#253494", "#9e9ac8","lightblue", "#238b45", "#54278f", "#bdbdbd", "#fee6ce", "#cb181d", "#636363","#000000")
 # length(all_taxa_metat_color)
 # length(all_taxa_metat_order)
 ```
@@ -239,8 +238,129 @@ mcr_wtax_only %>%
     theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
           strip.background = element_blank(),
           strip.text = element_text(color = "black")) +
+  labs(x = "", y = "Relative abundance transcript count") +
   facet_grid(cols = vars(VENT_FIELD, VENT_BIN), scales = "free_x", space = "free")
 ```
+
+
+### Summary of taxonomic groups
+
+```{r, fig.width = 5, fig.height=5}
+mcr_wtax_only %>% 
+  separate(SAMPLE, c("FIELD", "LOCATION", "EXP", "SAMPLE_ID"), sep = "_") %>% 
+  filter(EXP == "insitu") %>% 
+  separate(full_classification, c("Domain", "Supergroup", "Phylum", "Class", "Order", "Family", "Genus_spp"), sep = "; ", remove = FALSE) %>% 
+  mutate(SUPERGROUP_18S = case_when(
+    Phylum == "Ciliophora" ~ "Alveolata-Ciliophora",
+    Phylum == "Dinophyta" ~ "Alveolata-Dinoflagellata",
+    # Phylum == "Perkinsea" ~ "Protalveolata",
+    # Phylum == "Colponemidia" ~ "Protalveolata",
+    # Phylum == "Chromerida" ~ "Protalveolata",
+    Supergroup == "Alveolata" ~ "Other Alveolata",
+    Supergroup %in% as_is ~ Supergroup,
+    Supergroup == "Haptista" ~ "Hacrobia",
+    Phylum == "Radiolaria" ~ "Rhizaria-Radiolaria",
+    Phylum == "Cercozoa" ~ "Rhizaria-Cercozoa",
+    (Supergroup == "Rhizaria" & Phylum != "Radiolaria" & Phylum != "Cercozoa") ~ "Rhizaria",
+    Order == "Bigyra" ~ "Stramenopiles-Opalozoa;Sagenista",
+    Class == "Ochromonadales" ~ "Stramenopiles-Ochrophyta",
+    Supergroup == "Stramenopiles" ~ "Stramenopiles",
+    Supergroup == "Opisthokonta" ~ "Opisthokonta",
+    (is.na(Supergroup) | Supergroup == "Eukaryota incertae sedis") ~ "Unknown Eukaryota",
+    TRUE ~ "Other-metaT only")) %>% 
+  mutate(VENT_FIELD = case_when(grepl("Piccard", FIELD) ~ "Piccard",
+                           grepl("VonDamm", FIELD) ~ "Von Damm")) %>% 
+  mutate(VENT_BIN = case_when(
+    (LOCATION == "Background" | LOCATION == "Plume") ~ "Non-vent",
+    TRUE ~ "Vent"
+  )) %>% 
+  group_by(VENT_FIELD, VENT_BIN, SUPERGROUP_18S) %>% 
+    summarise(MEAN = mean(SUM_scaledTPM)) %>% 
+  mutate(SUPERGROUP_18S_ORDER = factor(SUPERGROUP_18S, levels = all_taxa_metat_order)) %>% 
+  ggplot(aes(x = VENT_FIELD, y = MEAN, fill = SUPERGROUP_18S_ORDER)) +
+  geom_bar(stat = "identity", position = "fill", color = "black") +
+  scale_fill_manual(values = all_taxa_metat_color) +
+    theme_linedraw() +
+    theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
+          strip.background = element_blank(),
+          strip.text = element_text(color = "black"),
+          legend.title = element_blank(),
+          legend.position = "left") +
+  labs(x = "", y = "Relative abundance transcript count") +
+  facet_grid(cols = vars(VENT_BIN), scales = "free_x", space = "free")
+```
+
+Based on the overall taxonomic groups, Ciliates, dinos, amoebozoa, excavata, hacrobia, cercozoa, radiolaria, and rhizaria need to be looked at further.
+
+## Taxa by Family
+
+```{r}
+taxa_mcr_summarized <- mcr_wtax_only %>% 
+  separate(SAMPLE, c("FIELD", "LOCATION", "EXP", "SAMPLE_ID"), sep = "_") %>% 
+  filter(EXP == "insitu") %>% 
+  separate(full_classification, c("Domain", "Supergroup", "Phylum", "Class", "Order", "Family", "Genus_spp"), sep = "; ", remove = FALSE) %>% 
+  mutate(SUPERGROUP_18S = case_when(
+    Phylum == "Ciliophora" ~ "Alveolata-Ciliophora",
+    Phylum == "Dinophyta" ~ "Alveolata-Dinoflagellata",
+    # Phylum == "Perkinsea" ~ "Protalveolata",
+    # Phylum == "Colponemidia" ~ "Protalveolata",
+    # Phylum == "Chromerida" ~ "Protalveolata",
+    Supergroup == "Alveolata" ~ "Other Alveolata",
+    Supergroup %in% as_is ~ Supergroup,
+    Supergroup == "Haptista" ~ "Hacrobia",
+    Phylum == "Radiolaria" ~ "Rhizaria-Radiolaria",
+    Phylum == "Cercozoa" ~ "Rhizaria-Cercozoa",
+    (Supergroup == "Rhizaria" & Phylum != "Radiolaria" & Phylum != "Cercozoa") ~ "Rhizaria",
+    Order == "Bigyra" ~ "Stramenopiles-Opalozoa;Sagenista",
+    Class == "Ochromonadales" ~ "Stramenopiles-Ochrophyta",
+    Supergroup == "Stramenopiles" ~ "Stramenopiles",
+    Supergroup == "Opisthokonta" ~ "Opisthokonta",
+    (is.na(Supergroup) | Supergroup == "Eukaryota incertae sedis") ~ "Unknown Eukaryota",
+    TRUE ~ "Other-metaT only")) %>% 
+  mutate(VENT_FIELD = case_when(grepl("Piccard", FIELD) ~ "Piccard",
+                           grepl("VonDamm", FIELD) ~ "Von Damm")) %>% 
+  mutate(VENT_BIN = case_when(
+    (LOCATION == "Background" | LOCATION == "Plume") ~ "Non-vent",
+    TRUE ~ "Vent"
+  ))
+```
+
+Isolate groups of interest, how much of the data are we keeping with this move?
+
+```{r}
+unique(taxa_mcr_summarized$SUPERGROUP_18S)
+glimpse(taxa_mcr_summarized)
+```
+
+
+```{r}
+taxa_keep <- c("Alveolata-Ciliophora", "Alveolata-Dinoflagellata", "Amoebozoa", "Excavata", "Hacrobia", "Rhizaria-Cercozoa", "Rhizaria-Radiolaria", "Rhizaria")
+pink_qual <- c("#fff7f3", "#fcc5c0", "#fa9fb5","#f768a1","#dd3497", "#ae017e", "#7a0177", "black")
+
+```
+
+```{r, fig.height=9, fig.width=6}
+taxa_mcr_summarized %>% 
+  filter(SUPERGROUP_18S %in% taxa_keep) %>% 
+  filter(SUM_scaledTPM > 0) %>% 
+  group_by(VENT_BIN, VENT_FIELD, SUPERGROUP_18S, LOCATION, Class, Order, Family) %>% 
+    summarise(SUM_FAMILY = sum(SUM_scaledTPM),
+              log10_family = log(SUM_FAMILY),
+              log2_family = log2(SUM_FAMILY)) %>% 
+  ggplot(aes(x = LOCATION, y = Family, fill = log10_family)) +
+  geom_tile(stat = "identity", linewidth = 0.1, color = "black") +
+      scale_fill_stepsn(
+      limits = c(-10,10),
+      na.value = NA,
+      show.limits = TRUE,
+      colors = pink_qual) +
+  facet_grid(rows = vars(SUPERGROUP_18S), cols = vars(VENT_BIN, VENT_FIELD), scales = "free", space = "free") +
+  theme_minimal() +
+  theme(axis.text.y = element_text(color = "black"),
+        axis.text.x = element_text(color = "black", angle = 90, hjust = 1, vjust = 0))
+```
+
+
 
 # DE seq MCR
 
@@ -265,7 +385,7 @@ kegg <- read.csv("../KEGG_DB/combined_kegg.csv")
 # dim(kegg)
 kegg <- kegg %>% select(KEGG = KO_number, everything(), -X)
 curated_kegg <- read.csv("../KEGG_DB/reformat-kegg-pfam-skh.csv")
-head(curated_kegg)
+# head(curated_kegg)
 
 key_geneid <- kegg %>% 
   distinct() %>% 
@@ -324,6 +444,8 @@ glimpse(mcr_transcripts)
 ```{r, fig.height=5, fig.width=6}
 # head(mcr_transcripts)
 data.frame(mcr_transcripts) %>% 
+  select(log2FoldChange, SIGNIFICANT, baseMean, REGULATION) %>% 
+  distinct() %>% 
   ggplot(aes(x = baseMean, y = log2FoldChange, color = SIGNIFICANT)) +
   geom_point(stat = "identity", shape = 20, size = 2) +
   scale_x_log10() +
@@ -357,16 +479,24 @@ data.frame(mcr_alltranscripts_annot) %>%
 What are the highly significant and represented transcripts for both sides?
 
 ```{r}
+# range(mcr_trans_wKEGG$log2FoldChange)
 upreg_10 <- mcr_trans_wKEGG %>% 
-  filter(SIGNIFICANT == "Significantly") %>% 
+  # filter(SIGNIFICANT == "Significantly") %>%
     # filter(abs(log2FoldChange) > 10) %>%
+  filter(log2FoldChange < -5) %>% 
   mutate(KEGG = str_remove(KEGG_ko, "ko:")) %>%
   left_join(key_geneid) %>% 
-  filter(!is.na(Category01)) %>% 
+  # filter(!is.na(Category01)) %>% 
   left_join(taxa) %>% 
   select(REGULATION, SIGNIFICANT, PFAMs, full_classification,
          A:D, Gene_identification, Category01, Category02, FullName, GeneID) %>% 
   distinct()
+# unique(upreg_10$REGULATION)
+```
+
+```{r}
+# View(upreg_10)
+# table(upreg_10$PFAMs)
 ```
 
 ```{r}
@@ -380,11 +510,89 @@ unique(taxa$SUPERGROUP_18S)
 ```
 
 ```{r}
+# (dim(data.frame(mcr_alltranscripts_annot) %>% 
+  # filter(!is.na(Category01)))[1])/(dim(mcr_alltranscripts_annot)[1])
+
+```
+
+```{r, fig.height=5, fig.width=6}
+# head(mcr_transcripts)
+data.frame(mcr_alltranscripts_annot) %>% 
+  filter(!is.na(Category01)) %>% 
+  mutate(PHAGOTROPHY_BIN = case_when(
+    Category01 == "Phagotrophy" ~ "Phagotrophy",
+    Category01 != "Phagotrophy" ~ "Else")) %>% 
+  ggplot(aes(x = baseMean, y = log2FoldChange, color = PHAGOTROPHY_BIN)) +
+  geom_point(stat = "identity", shape = 20, size = 2) +
+  scale_x_log10() +
+  theme_classic() +
+  scale_color_manual(values = c("#878787", "blue")) +
+  theme(legend.position = "top",
+        axis.text = element_text(color = "black", size = 12, face = "bold"),
+        axis.title = element_text(color = "black", size = 12, face = "bold")) +
+  labs(y = "log2 Fold Change", x = "Mean Normalized Counts")
+
+```
+
+```{r}
+colnames(mcr_alltranscripts_annot)
+tmp <- data.frame(mcr_alltranscripts_annot) %>% 
+  mutate(PHAGOTROPHY_BIN = case_when(
+    Category01 == "Phagotrophy" ~ "Phagotrophy",
+    TRUE ~ "Else")) %>% 
+  group_by(PHAGOTROPHY_BIN, REGULATION, SIGNIFICANT) %>% 
+    summarise(COUNT = n())
+
+
+```
+
+```{r}
+colnames(mcr_alltranscripts_annot)
+# calreticulin
+mcr_alltranscripts_annot %>% 
+  filter(grepl("SEC61A", GeneID)) %>% 
+  filter(SIGNIFICANT == "Significantly") %>% 
+  select(REGULATION, full_classification, Gene_identification) %>% 
+  distinct()
+```
+
+### Plot only ciliates?
+
+```{r}
+unique(mcr_alltranscripts_annot$SUPERGROUP_18S)
+```
+
+```{r}
+tmp <- data.frame(mcr_alltranscripts_annot) %>% 
+  filter(SUPERGROUP_18S == "Alveolata-Ciliophora" )
+length(unique(tmp$full_classification))
+```
+
+```{r, fig.height=5, fig.width=6}
+# head(mcr_alltranscripts_annot)
+data.frame(mcr_alltranscripts_annot) %>% 
+  # filter(SUPERGROUP_18S == "Alveolata-Ciliophora" ) %>% 
+  # mutate(KEGG = str_remove(KEGG_ko, "ko:")) %>%
+  # left_join(key_geneid) %>% 
+  # filter(!is.na(Category01)) %>% 
+  ggplot(aes(x = SUPERGROUP_18S, y = log2FoldChange)) +
+  geom_boxplot() +
+  scale_y_continuous(limits = c(-15,15)) +
+  coord_flip() +
+  theme_classic() +
+  theme(legend.position = "right",
+        axis.text = element_text(color = "black", size = 12, face = "bold"),
+        axis.title = element_text(color = "black", size = 12, face = "bold")) +
+  labs(y = "log2 Fold Change", x = "Mean Normalized Counts")
+
+```
+
+```{r}
 # | eval: false
 # head(mcr_transcripts)
 # colnames(taxfxn)
 
-kegg_mod <- kegg %>% select(-X, KEGG = KO_number, everything())
+kegg_mod <- kegg %>% select(KEGG, everything())
 
 mcr_trans_wKEGG <- mcr_transcripts %>% 
   filter(SIGNIFICANT == "Significantly") %>% 
@@ -513,16 +721,16 @@ load("input-docs/mcr_df_tax_means.RData", verbose = TRUE)
 
 load("input-docs/mcr_alltranscripts_annot.RData", verbose = TRUE)
 
-load("/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/mcr_annotated_mean.RData", verbose = TRUE)
+# load("/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/mcr_annotated_mean.RData", verbose = TRUE)
 load("input-docs/mcr_annotated_mean.RData", verbose = TRUE)
 dim(mcr_transcripts)
-head(mcr_transcripts)
+# head(mcr_all)
+load("for-plots-mcr.RData", verbose = TRUE)
 ```
 
 ```{r}
 library(tidyverse)
 ```
-
 
 ## Log FC & trends in key pathways
 
@@ -536,7 +744,7 @@ fxn_colors <- c("#67000d",  "#ffffcc","#feb24c",  "#253494", "#9e9ac8", "#238b45
 mcr_alltranscripts_annot %>% 
   filter(!is.na(Category01)) %>%
   filter(!is.na(REGULATION)) %>% 
-  filter(!(SUPERGROUP_18S %in% tax_rm)) %>% 
+  # filter(!(SUPERGROUP_18S %in% tax_rm)) %>% 
   filter(SUPERGROUP_18S %in% tax_select) %>% 
   filter(Category01 == "Phagotrophy") %>% 
   ggplot(aes(x = baseMean, y = log2FoldChange, shape = SIGNIFICANT, fill = Category02, color = Category02)) +
@@ -667,7 +875,6 @@ head(mcr_toplot)
 range(mcr_toplot$COUNTS)
 ```
 
-
 ```{r}
 # glimpse(mcr_toplot)
 tax_rm <- c("Unknown Eukaryota", "Other Alveolata", "Other-metaT only")
@@ -687,22 +894,23 @@ for_hets_mean <- mcr_toplot %>%
 SEPARTE BY SAMPLE NAME TO GET SAMPLE SPECIFIC HETEROTROPHY PATTERNS.
 
 ```{r, fig.height=5, fig.width=15}
-pink_qual <- c("#fff7f3", "#fcc5c0", "#fa9fb5","#f768a1","#dd3497", "#ae017e", "#7a0177")
+pink_qual <- c("#fff7f3", "#fcc5c0", "#fa9fb5","#f768a1","#dd3497", "#ae017e", "#7a0177", "black")
 
 for_hets_mean %>% 
-  ggplot(aes(x = GeneID, y = VENT, fill = MEAN_COUNT)) +
-  geom_tile(stat = "identity", linewidth = 0.6) +
-  scale_color_manual(values = c("white", "black")) +
+  ggplot(aes(x = GeneID, y = VENT, fill = log(MEAN_COUNT))) +
+  geom_tile(stat = "identity", linewidth = 0.1, color = "black") +
       scale_fill_stepsn(
-      # limits = c(-5,5),
-      # breaks = c(0.0, 3.5, 7.0, 10.5),
+      limits = c(-10,10),
+      na.value = NA,
       show.limits = TRUE,
       colors = pink_qual) +
-  facet_grid(cols = vars(Category01, Category02), space = "free_x", scales = "free_x") + 
+  facet_grid(cols = vars(Category01, Category02), rows = vars(SUPERGROUP_18S, TYPE_BIN), space = "free", scales = "free") + 
   theme_classic() +
   theme(axis.text = element_text(color = "black"),
-        axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, size = 6),
-        axis.title = element_blank())
+        legend.title = element_blank(),
+        axis.text.x = element_text(angle = 90, hjust = 1, vjust = 1, size = 6),
+        axis.title = element_blank(),
+        strip.background = element_blank())
 ```
 
 SEPARATE BY CATEGORY 1 and supergroup
@@ -728,8 +936,143 @@ mcr_all <- mcr_annotated_mean %>%
   filter(EXP == "insitu") %>% 
     group_by(GeneID, SUPERGROUP_18S, VENT, FIELDYR, TYPE, TYPE_BIN, Category01, Category02) %>% 
     summarise(MEAN_COUNT = mean(COUNTS))
-  
+
+
+unique(mcr_all$SUPERGROUP_18S)
+unique(mcr_all$Category01)
 ```
+
+```{r, fig.height=17, fig.width=6}
+pink_qual <- c("#fff7f3", "#fcc5c0", "#fa9fb5","#f768a1","#dd3497", "#ae017e", "#7a0177", "black")
+
+rm_extra <- c("Alveolata-Ciliophora", "Alveolata-Dinoflagellata","Amoebozoa", "Excavata", "Hacrobia", "Rhizaria-Cercozoa",  "Rhizaria-Radiolaria","Rhizaria",  "Stramenopiles")
+
+# svg("output/mcr-target-taxa.svg", h = 17, w = 6)
+mcr_all %>% 
+  filter(!is.na(Category01) & (Category01 != "")) %>% 
+  filter(SUPERGROUP_18S %in% rm_extra) %>% 
+  group_by(Category01, SUPERGROUP_18S, VENT, FIELDYR, TYPE, TYPE_BIN) %>%
+    summarise(SUM_CATEGORY = sum(MEAN_COUNT)) %>% 
+  ggplot(aes(x = Category01, y = VENT, fill = log(SUM_CATEGORY))) +
+  geom_tile(stat = "identity", linewidth = 0.2, color = "black") +
+      scale_fill_stepsn(
+      limits = c(-10,10),
+      na.value = NA,
+      show.limits = TRUE,
+      colors = pink_qual) +
+  facet_grid(rows = vars(SUPERGROUP_18S, TYPE_BIN), space = "free", scales = "free") +
+  theme_classic() +
+  theme(axis.text = element_text(color = "black"),
+        legend.title = element_blank(),
+        axis.text.x = element_text(angle = 90, hjust = 1, vjust = 1, size = 6),
+        strip.text.y = element_text(angle = 0, hjust = 0, vjust = 0, size = 8, color = "black"),
+        axis.title = element_blank(),
+        strip.background = element_blank())
+# dev.off()
+```
+
+REPEAT FOR SUBSET
+
+```{r, fig.height=5, fig.width=8}
+pink_qual <- c("#fff7f3", "#fcc5c0", "#fa9fb5","#f768a1","#dd3497", "#ae017e", "#7a0177", "black")
+
+rm_extra <- c("Alveolata-Ciliophora", "Alveolata-Dinoflagellata","Amoebozoa", "Excavata", "Hacrobia", "Rhizaria-Cercozoa",  "Rhizaria-Radiolaria","Rhizaria",  "Stramenopiles")
+
+# svg("output/mcr-target-taxa.svg", h = 17, w = 6)
+mcr_all %>% 
+  filter(!is.na(Category01) & (Category01 != "")) %>% 
+  filter(Category01 != "Entner-Doudoroff pathway") %>% 
+  filter(SUPERGROUP_18S %in% rm_extra) %>% 
+  filter(SUPERGROUP_18S == "Alveolata-Ciliophora" | SUPERGROUP_18S == "Alveolata-Dinoflagellata") %>% 
+  group_by(Category01, SUPERGROUP_18S, VENT, FIELDYR, TYPE, TYPE_BIN) %>%
+    summarise(SUM_CATEGORY = sum(MEAN_COUNT)) %>% 
+  ggplot(aes(x = Category01, y = VENT, fill = log(SUM_CATEGORY))) +
+  geom_tile(stat = "identity", linewidth = 0.2, color = "black") +
+      scale_fill_stepsn(
+      limits = c(-10,10),
+      na.value = NA,
+      show.limits = TRUE,
+      colors = pink_qual) +
+  facet_grid(cols = vars(TYPE_BIN), rows = vars(SUPERGROUP_18S), space = "free", scales = "free") +
+  theme_classic() +
+  coord_flip() +
+  theme(axis.text = element_text(color = "black"),
+        legend.title = element_blank(),
+        axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0, size = 12),
+        axis.text.y = element_text(size = 12),
+        strip.text.y = element_text(angle = 0, hjust = 1, vjust = 0, size = 12, color = "black"),
+        axis.title = element_blank(),
+        strip.background = element_blank())
+# dev.off()
+```
+
+```{r, fig.height=5, fig.width=7}
+pink_qual <- c("#fff7f3", "#fcc5c0", "#fa9fb5","#f768a1","#dd3497", "#ae017e", "#7a0177", "black")
+
+rm_extra <- c("Alveolata-Ciliophora", "Alveolata-Dinoflagellata","Amoebozoa", "Excavata", "Hacrobia", "Rhizaria-Cercozoa",  "Rhizaria-Radiolaria","Rhizaria",  "Stramenopiles")
+
+# svg("output/mcr-target-taxa.svg", h = 17, w = 6)
+mcr_all %>% 
+  filter(!is.na(Category01) & (Category01 != "")) %>% 
+  filter(Category01 != "Entner-Doudoroff pathway") %>% 
+  filter(SUPERGROUP_18S %in% rm_extra) %>% 
+  filter(SUPERGROUP_18S == "Amoebozoa" | SUPERGROUP_18S == "Excavata") %>% 
+  group_by(Category01, SUPERGROUP_18S, VENT, FIELDYR, TYPE, TYPE_BIN) %>%
+    summarise(SUM_CATEGORY = sum(MEAN_COUNT)) %>% 
+  ggplot(aes(x = Category01, y = VENT, fill = log(SUM_CATEGORY))) +
+  geom_tile(stat = "identity", linewidth = 0.2, color = "black") +
+      scale_fill_stepsn(
+      limits = c(-10,10),
+      na.value = NA,
+      show.limits = TRUE,
+      colors = pink_qual) +
+  facet_grid(cols = vars(TYPE_BIN), rows = vars(SUPERGROUP_18S), space = "free", scales = "free") +
+  theme_classic() +
+  coord_flip() +
+  theme(axis.text = element_text(color = "black"),
+        legend.title = element_blank(),
+        axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0, size = 12),
+        axis.text.y = element_text(size = 12),
+        strip.text.y = element_text(angle = 0, hjust = 1, vjust = 0, size = 12, color = "black"),
+        axis.title = element_blank(),
+        strip.background = element_blank())
+# dev.off()
+```
+
+```{r}
+head(for_hets_mean)
+```
+
+```{r, fig.height=5, fig.width=12}
+pink_qual <- c("#fff7f3", "#fcc5c0", "#fa9fb5","#f768a1","#dd3497", "#ae017e", "#7a0177", "black")
+
+rm_extra <- c("Alveolata-Ciliophora", "Alveolata-Dinoflagellata","Amoebozoa", "Excavata", "Hacrobia", "Rhizaria-Cercozoa",  "Rhizaria-Radiolaria","Rhizaria",  "Stramenopiles")
+
+# svg("output/mcr-target-taxa.svg", h = 17, w = 6)
+mcr_all %>% 
+  filter(!is.na(GeneID)) %>% 
+  filter(Category01 == "Phagotrophy") %>% 
+  filter(SUPERGROUP_18S == "Alveolata-Ciliophora") %>% 
+  group_by(Category02, GeneID, SUPERGROUP_18S, VENT, FIELDYR, TYPE, TYPE_BIN) %>%
+    summarise(SUM_CATEGORY = sum(MEAN_COUNT)) %>% 
+  ggplot(aes(x = GeneID, y = VENT, fill = log(SUM_CATEGORY))) +
+  geom_tile(stat = "identity", linewidth = 0.2, color = "black") +
+      scale_fill_stepsn(
+      limits = c(-10,10),
+      na.value = NA,
+      show.limits = TRUE,
+      colors = pink_qual) +
+  facet_grid(rows = vars(TYPE_BIN), cols = vars(Category02), space = "free", scales = "free") +
+  theme_classic() +
+  theme(axis.text = element_text(color = "black"),
+        legend.title = element_blank(),
+        axis.text.x = element_text(angle = 90, hjust = 1, vjust = 1, size = 6),
+        strip.text.y = element_text(angle = 0, hjust = 0, vjust = 0, size = 8, color = "black"),
+        axis.title = element_blank(),
+        strip.background = element_blank())
+# dev.off()
+```
+
 ```{r}
 # dim(mcr_all)
 # head(mcr_all)
@@ -739,12 +1082,96 @@ head(for_hets_mean)
 save(for_hets_mean, mcr_all, file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/for-plots-mcr.RData")
 ```
 
+# Ordination
 
-## Ordination
+Subset to only the vent sites. The difference between the background and vent sites is substantial.
+
+```{r}
+# | message: false
+library(vegan); library(ggdendro); library(compositions)
+```
+```{r}
+load("input-docs/mcr_alltranscripts_annot.RData", verbose = TRUE)
+
+# load("/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/mcr_annotated_mean.RData", verbose = TRUE)
+load("input-docs/mcr_annotated_mean.RData", verbose = TRUE)
+# dim(mcr_transcripts)
+# head(mcr_all)
+load("for-plots-mcr.RData", verbose = TRUE)
+```
+
 
 ```{r}
 glimpse(mcr_annotated_mean)
 ```
+
+Isolate nonTf samples, Sequence ID and that is is. Change to numeric, remove if row sums to all zeroes
+
+```{r}
+mcr_numeric <- mcr_annotated_mean %>% 
+  select(-(contains("_Tf_"))) %>% 
+  select(-(contains("_Plume_"))) %>% 
+  select(-(contains("_Background_"))) %>% 
+  select(SequenceID, contains("mean.")) %>% 
+  filter(sum(c_across(cols = starts_with("mean."))) > 0) %>% 
+  distinct() %>% # remove duplicate transcript IDs.
+  column_to_rownames(var = "SequenceID")
+```
+
+```{r}
+logratio_mcr <- data.frame(
+  compositions::clr(t(mcr_numeric))
+)
+
+```
+
+Compute principle components, plot eigen values individually.
+```{r}
+pca_logratio <- prcomp(logratio_mcr)
+variance_logratio <- (pca_logratio$sdev^2)/sum(pca_logratio$sdev^2)
+
+barplot(variance_logratio, main = "Log-Ratio PCA Screeplot", xlab = "PC Axis", ylab = "% Variance", 
+    cex.names = 1.5, cex.axis = 1.5, cex.lab = 1.5, cex.main = 1.5)
+```
+Modify data to put PCA points into dataframe format.
+```{r}
+mcr_pca_pts <- data.frame(pca_logratio$x, SAMPLE = rownames(pca_logratio$x)) %>%
+  rownames_to_column(var = "sampleid") %>% 
+  separate(sampleid, c("field", "LOCATION", "insitu", "SAMPLEID"), "_", 
+        remove = FALSE) %>% 
+  mutate(VENT_FIELD = case_when(grepl("Piccard", field) ~ "Piccard",
+                           grepl("VonDamm", field) ~ "Von Damm")) %>% 
+  mutate(VENT_BIN = case_when(
+    (LOCATION == "Background" | LOCATION == "Plume") ~ "Non-vent",
+    TRUE ~ "Vent"
+  ))
+# glimpse(mcr_pca_pts)
+  
+  # head(mcr_pca_pts)
+
+pc1 <- round(variance_logratio[1] * 100, 1)
+pc2 <- round(variance_logratio[2] * 100, 1)
+```
+
+```{r}
+mcr_pca_pts %>% 
+  filter(VENT_BIN != "Non-vent") %>% 
+  ggplot(aes(x = PC1, y = PC2)) +
+  geom_point(stroke = 2, size = 5, aes(shape = VENT_FIELD, fill = VENT_FIELD)) +
+  # scale_shape_manual(values = c(2,17)) +
+  # scale_fill_manual(values = samplenames_color) +
+  # scale_color_manual(values = samplenames_color) +
+  theme_linedraw() + coord_fixed(ratio = 1) +
+  guides(fill = guide_legend(override.aes = list(shape = c(22)))) +
+  geom_hline(yintercept = 0, size = 0.2) + geom_vline(xintercept = 0, linewidth = 0.2) +
+  scale_shape_manual(values = c(21, 24)) +
+  theme(legend.title = element_blank(),
+        axis.text = element_text(color = "black", size = 13),
+        axis.title = element_text(color = "black", size = 16),
+        panel.grid.minor = element_blank()) +
+  labs(x =  paste(pc1, "%", sep = ""), y = paste(pc2, "%", sep = ""))
+```
+
 
 # Session Information
 
