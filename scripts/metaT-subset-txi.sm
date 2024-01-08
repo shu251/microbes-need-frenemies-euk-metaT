@@ -20,4 +20,4 @@ module load GCC/12.2.0
 module load OpenMPI/4.1.4
 module load R_tamu/4.3.1
 
-Rscript /home/skhu/microbes-need-frenemies-euk-metaT/scripts/subset-txi.R
+Rscript /home/skhu/microbes-need-frenemies-euk-metaT/scripts/subset-txi_Plume-v-BSW.R
