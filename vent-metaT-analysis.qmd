@@ -3,7 +3,7 @@ title: "Vent metatranscriptome"
 format: html
 editor: visual
 editor_options: 
-  chunk_output_type: console
+  chunk_output_type: inline
 ---
 
 # Set up
@@ -14,9 +14,14 @@ Library
 library(tidyverse)
 library(DESeq2)
 library(tximport)
+library(ggupset)
+library(ggdendro)
 ```
 
 # Import data
+
+
+*Repeat below, but without axial*
 
 ```{r}
 load(file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/all_samples_vent_metaT.RData", verbose = TRUE)
@@ -29,30 +34,19 @@ taxfxn <- read.table("/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-outp
 # taxfxn <- read.table("/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/TaxonomicAndFunctionalAnnotations.csv", header = TRUE, nrows = 250, sep = "\t")
 ```
 
+1,718,923 total entries in the tax function output from eukrhythmic.
+
+```{r}
+# head(taxfxn$SequenceID)
+# head(row.names(mean_counts_df))
+```
+
 Set transcript IDs to annotated vs. not annotated.
+
 ```{r}
 # tx2gene_in <- taxfxn %>% 
 #   dplyr::mutate(SEQ_ID = stringr::str_remove(SequenceID, ".p[:digit:]$"))
 ```
-
-## Get basic data stats
-
-Total number of transcripts = 1,552,270.
-```{r}
-# length(rownames(mean_counts_df))
-length(unique(rownames(mean_counts_df)))
-```
-1,718,923 total entries in the tax function output from eukrhythmic.
-```{r}
-dim(taxfxn)
-# head(taxfxn$SequenceID)
-# head(row.names(mean_counts_df))
-```
-```{r}
-colnames(mean_counts_df)
-```
-
-
 
 ## Make long dataframe
 
@@ -110,93 +104,564 @@ dim(long_df_annot);dim(long_df)
 ```
 
 ```{r}
-save(long_df, long_df_annot, file = "tmp_longdf.RData")
+# save(long_df, long_df_annot, file = "tmp_longdf.RData")
 ```
 
+# Import real data!
+```{r}
+load(file = "input-docs/tmp_longdf.RData", verbose = TRUE)
+```
 
-# Shared vs. unique
+# Trial with toy dataset
 
-Starting with long dataframe. What transcripts are shared vs unique across vent fields and  within or outside of the vent fields.
+Import toy dataset. Derived from randomly subsampling 3000 transcripts from full sample list.
 
 ```{r}
-library(ggupset)
+# load(file = "input-docs/tmp_longdf_3000.RData", verbose = TRUE)
+# long_df <- long_df_3000
+# long_df_annot <- long_df_annot_3000
 ```
-
-Everything.
-
-```{r}
-long_df %>% 
-  unite(SAMPLE_NAME, VENT_BIN, VENT_FIELD, LOCATION, sep = " ", remove = FALSE) %>% 
-  group_by(SequenceID) %>% 
-    summarise(SAMPLE = list(SAMPLE_NAME)) %>% 
-  ggplot(aes(x = SAMPLE)) +
-    scale_x_upset(n_intersections = 35)
-```
-```{r}
-head(long_df_annot)
-```
-
-
-```{r}
-long_df_annot %>% 
-  unite(SAMPLE_NAME, VENT_BIN, VENT_FIELD, LOCATION, sep = " ", remove = FALSE) %>% 
-  mutate(FXN_BIN = case_when(
-    KEGG_ko == "-" ~ "No gene ID",
-    TRUE ~ "Gene ID assigned")) %>% 
-  # mutate(TAX_BIN = case_when())
-  group_by(SequenceID, FXN_BIN) %>% 
-    summarise(SAMPLE = list(SAMPLE_NAME)) %>% 
-  ggplot(aes(x = SAMPLE, fill = FXN_BIN)) +
-    ggupset::scale_x_upset()
-```
-
-```{r}
-long_df_annot %>% 
-  filter(VENT_BIN == "Vent") %>% 
-  unite(SAMPLE_NAME, VENT_BIN, VENT_FIELD, LOCATION, sep = " ", remove = FALSE) %>% 
-  mutate(FXN_BIN = case_when(
-    KEGG_ko == "-" ~ "No gene ID",
-    TRUE ~ "Gene ID assigned")) %>% 
-  # mutate(TAX_BIN = case_when())
-  group_by(SequenceID, FXN_BIN) %>% 
-    summarise(SAMPLE = list(SAMPLE_NAME)) %>% 
-  ggplot(aes(x = SAMPLE, fill = FXN_BIN)) +
-    ggupset::scale_x_upset()
-```
-
-## What are these unique transcripts?
 
 ```{r}
 glimpse(long_df_annot)
 ```
 
-How many zeros are there?
-```{r}
+# Get basic data stats
 
-
-```
-```{r}
-load("tmp_longdf.RData")
-```
+Output information about the overall dataset.
 
 ```{r}
-table(long_df_annot$NUM_ZERO)
-library(tidyverse)
-ggplot(long_df_annot, aes(x = NUM_ZERO, y = scaledTPM)) +
-  geom_point(stat = "identity")
+x <- length(unique(long_df_annot$SequenceID))
+# x
+# range(long_df_annot$NUM_ZERO)
+# range(long_df_annot$scaledTPM)
 ```
 
-## Re-do, but with shared subset
+-   Total number of transcripts: `r x`
+-   It should read: 1,519,132
+
+```{r}
+unique(long_df_annot$Domain)
+unique(long_df_annot$Supergroup)
+
+y <- sum(is.na(long_df_annot$Supergroup))
+yx <- length(unique(filter(long_df_annot, Supergroup == "Eukaryota incertae sedis"))$SequenceID)
+# y;yx
+```
+
+-   Total number of `NA` at the supergroup level `r y`
+-   Total number of `incertae sedis` at the supergroup level `r yx`
+
+```{r}
+kegg <- length(unique((long_df_annot %>% 
+  filter(KEGG_ko == "-"))$SequenceID))
+go <- length(unique((long_df_annot %>% 
+  filter(GOs == "-"))$SequenceID))
+pfam <- length(unique((long_df_annot %>% 
+  filter(PFAMs == "-"))$SequenceID))
+kegg;go;pfam
+```
+
+-   Total number of `NA` for KEGG IDs `r kegg`
+-   Total number of `NA` for Gene Ontology (GO terms) `r go`
+-   Total number of `NA` for PFAM ID `r pfam`
+
+
+Compare the TPM value for a transcript by the number of samples that the transcript appears.
+
+```{r}
+long_df_annot %>% 
+  mutate(Number_of_samples = 36 - NUM_ZERO) %>% 
+ggplot(aes(x = Number_of_samples, y = scaledTPM)) +
+  geom_point(stat = "identity") +
+  theme_minimal()
+```
+Repeat, remove TPM <= 10.
+```{r}
+long_df_annot %>% 
+  filter(scaledTPM >=10) %>% 
+  mutate(Number_of_samples = 36 - NUM_ZERO) %>% 
+ggplot(aes(x = Number_of_samples, y = scaledTPM)) +
+  geom_point(stat = "identity") +
+  theme_minimal()
+```
+
+
+> Take-homes about these figures: Most of the transcripts that also have a higher TPM value appear in ~4-12 of the samples. This doesn't really change when we subsample to transcripts that have 10 or greater total TPMs. Very few transcripts are found in more than 15 or so samples at a time. And of those, the majority have <1000 TPM. 
+
+Total number of transcripts (and % of data) removed when we subset to transcripts that appear in more than 1 sample.
+```{r}
+total <- length(unique(long_df_annot$SequenceID))
+
+a <- length(unique(long_df_annot %>% 
+  filter(NUM_ZERO < 35))$SequenceID)
+
+100*(a/total)
+# b <- length(unique(long_df_annot %>% 
+#   filter(NUM_ZERO < 35))$SequenceID)
+```
+
+-   Percentage of transcripts kept when we subsample so all transcripts have to appear in at least 2 samples: `r (100*(a/total))`
+
+> 99% is totally fine to deal with moving forward. 
+
+# Shared vs. unique
+
+Starting with long dataframe. What transcripts are shared vs unique across vent fields and within or outside of the vent fields.
+
+
+Then summarise to individual taxa. And then again to individual KEGG IDs. 
+
+## Pre-process
+
+This step is necessary because the KEGG ID information added onto the full dataset caused lots of replication in the KEGG IDs. 
+```{r}
+# dim(long_df_annot)
+upset_input <- long_df_annot %>% 
+  filter(NUM_ZERO < 35) %>%
+  unite(SAMPLE_NAME, VENT_BIN, VENT_FIELD, LOCATION, sep = " ", remove = FALSE) %>% 
+  select(SAMPLE_NAME, SequenceID, KEGG_ko, SUPERGROUP_18S, scaledTPM) %>% 
+  distinct()
+dim(upset_input)  
+```
+
+
+```{r}
+# upset_input %>% 
+#   filter(VENT_BIN == "Vent") %>%
+#   group_by(SequenceID) %>% 
+#     summarise(SAMPLE = list(SAMPLE_NAME)) %>% 
+#   ggplot(aes(x = SAMPLE)) +
+#     ggupset::scale_x_upset(n_intersections = 20)
+```
+
+
+Repeat upsetR, with functional annotation information.
+
+```{r}
+# upset_input %>% 
+#   filter(grepl("Vent ", SAMPLE_NAME)) %>%
+#   mutate(FXN_BIN = case_when(
+#     KEGG_ko == "-" ~ "No gene ID",
+#     TRUE ~ "Gene ID assigned")) %>% 
+#   group_by(SequenceID, FXN_BIN) %>% 
+#     summarise(SAMPLE = list(SAMPLE_NAME)) %>% 
+#   ggplot(aes(x = SAMPLE, fill = FXN_BIN)) +
+#     ggupset::scale_x_upset(n_intersections = 30)
+```
+
+
+## What are these unique transcripts?
+
+```{r}
+unique_transcripts <- long_df_annot %>% 
+  filter(NUM_ZERO == 35)
+
+seqID_unique <- as.character(unique(unique_transcripts$SequenceID))
+```
+
+# DESeq
+
+See output from `subset-txi_Plume-v-BSW.R` and `metaT-deseq-Vent_NonVent-all.R` to look for DESeq analysis and relevant output.
+
+```{r}
+load("/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/background_vs_plume_DESeq.RData", verbose = TRUE)
+```
+
+```{r}
+load(file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/all-vent-sites_vent_vs_novent_DESeq.RData", verbose = TRUE)
+# de_all_fields, de_all_fields_unannot
+```
+
+## Vent vs. non-vent
+
+Across vent fields, what is significantly upregulated and downregulated in vent vs. non-vent samples?
+
+```{r}
+glimpse(de_all_fields)
+```
+
+```{r}
+results_all_fields <- DESeq2::results(de_all_fields, alpha = 0.05)
+```
+
+Positive log fold change == up regulated in Vent, compared to Non-vent
+```{r}
+plot_vent_v_nonvent <- data.frame(results_all_fields) %>% 
+  mutate(REGULATION = case_when(
+    log2FoldChange > 0 ~ "upregulated in vent",
+    log2FoldChange < 0 ~ "upregulated in non-vent"
+  ),
+  SIGNIFICANT = case_when(
+    pvalue <= 0.05 ~ "Significantly",
+    TRUE ~ "Not significantly"
+  )) %>% 
+  ggplot(aes(x = baseMean, y = log2FoldChange, color = SIGNIFICANT)) +
+  geom_point(stat = "identity") +
+  scale_x_log10() +
+  theme_classic() +
+  scale_color_manual(values = c("#878787", "#d73027")) +
+  labs(title = mcols(results_all_fields)$description[2])
+
+allfields_vent_v_nonvent_transcripts <- data.frame(results_all_fields) %>% 
+  mutate(REGULATION = case_when(
+    log2FoldChange > 0 ~ "upregulated in vent",
+    log2FoldChange < 0 ~ "upregulated in non-vent"
+  ),
+  SIGNIFICANT = case_when(
+    pvalue <= 0.05 ~ "Significantly",
+    TRUE ~ "Not significantly"
+  )) %>% 
+  # filter(SIGNIFICANT == "Significantly") %>% 
+  rownames_to_column(var = "SequenceID")
+```
+
+Table output for documentation.
+```{r}
+allfields_vent_v_nonvent_transcripts %>% 
+  group_by(REGULATION, SIGNIFICANT) %>% 
+    summarise(Number_of_transcripts = n())
+```
+
+
+## Plume vs. Background
+
+Positive log fold change == up regulated in Plume, relative to Background deep seawater.
+
+```{r}
+glimpse(de_bsw_plume_annotall)
+```
+
+```{r}
+results_bsw_plume <- DESeq2::results(de_bsw_plume_annotall, alpha = 0.05)
+```
+
+```{r}
+plot_bsw_v_plume <- data.frame(results_bsw_plume) %>% 
+  mutate(REGULATION = case_when(
+    log2FoldChange > 0 ~ "upregulated in plume",
+    log2FoldChange < 0 ~ "upregulated in background"
+  ),
+  SIGNIFICANT = case_when(
+    pvalue <= 0.05 ~ "Significantly",
+    TRUE ~ "Not significantly"
+  )) %>% 
+  ggplot(aes(x = baseMean, y = log2FoldChange, color = SIGNIFICANT)) +
+  geom_point(stat = "identity") +
+  scale_x_log10() +
+  theme_classic() +
+  scale_color_manual(values = c("#878787", "#d73027")) +
+  labs(title = mcols(results_bsw_plume)$description[2])
+
+plume_bsw_transcripts <- data.frame(results_bsw_plume) %>% 
+  mutate(REGULATION = case_when(
+    log2FoldChange > 0 ~ "upregulated in plume",
+    log2FoldChange < 0 ~ "upregulated in background"
+  ),
+  SIGNIFICANT = case_when(
+    pvalue <= 0.05 ~ "Significantly",
+    TRUE ~ "Not significantly"
+  )) %>% 
+  # filter(SIGNIFICANT == "Significantly") %>% 
+  rownames_to_column(var = "SequenceID")
+```
+
+
+Table output for documentation.
+```{r}
+plume_bsw_transcripts %>% 
+  group_by(REGULATION, SIGNIFICANT) %>% 
+    summarise(Number_of_transcripts = n())
+```
+
+
+## Compare number of unique transcripts with what is signigicant, etc.
+
+```{r}
+compare_transcript_variables <- allfields_vent_v_nonvent_transcripts %>% 
+  select(SequenceID, Vent_v_nonVent = REGULATION) %>% 
+  left_join((plume_bsw_transcripts %>% 
+              select(SequenceID, Plume_v_bsw = REGULATION))) %>% 
+  mutate(Appears_once = case_when(
+    SequenceID %in% seqID_unique ~ "Appears once",
+    TRUE ~ NA
+  ))
+```
+
+For transcripts that appear in more than 1 sample, how many were upregulated in the non-vent AND plume or background? Based on presence/absence - these are most likely to be indicative of non-vent signature.
+```{r}
+background_signature <- compare_transcript_variables %>% 
+  filter(is.na(Appears_once)) %>% 
+  filter((Vent_v_nonVent == "upregulated in non-vent") & !is.na(Plume_v_bsw))
+```
+
+
+For transcripts that appear in more than 1 sample, how many were upregulated in the vent only?
+
+```{r}
+vent_signature <- compare_transcript_variables %>% 
+  filter(is.na(Appears_once)) %>% 
+  filter(Vent_v_nonVent == "upregulated in vent")
+```
+
 
 # Taxonomic breakdown
 
+SampleID is not included for taxonomic summary, but will be included for dendrogram analysis.
+
+## Preprocess
+```{r}
+# head(long_df_annot)
+for_tax <- long_df_annot %>% 
+  select(NUM_ZERO, LOCATION, VENT_FIELD, VENT_BIN, full_classification, Supergroup, Phylum, Class, Order, Family, Genus_spp, SUPERGROUP_18S, scaledTPM) %>% 
+  filter(NUM_ZERO < 35)
+```
+
+
+## Bar plot of taxa
+```{r}
+all_taxa_metat_order <- c("Alveolata-Ciliophora", "Alveolata-Dinoflagellata", "Other Alveolata", "Amoebozoa", "Apusozoa", "Archaeplastida","Excavata", "Hacrobia", "Rhizaria-Cercozoa",  "Rhizaria-Radiolaria","Rhizaria",  "Stramenopiles", "Stramenopiles-Ochrophyta","Stramenopiles-Opalozoa;Sagenista",  "Opisthokonta", "Other-metaT only", "Unknown Eukaryota")
+
+all_taxa_metat_color = c("#fa9fb5", "#c51b8a", "#1d91c0","#67000d", "#ef3b2c", "#ffffcc","#feb24c",  "#c7e9b4",  "#253494", "#9e9ac8","lightblue", "#238b45", "#54278f", "#bdbdbd", "#fee6ce", "#cb181d", "#636363","#000000")
+
+# as_is <- c("Amoebozoa", "Apusozoa", "Excavata", "Hacrobia", "Archaeplastida")
+```
+
+
+```{r}
+for_tax %>% 
+  mutate(SUPERGROUP_18S_ORDER = factor(SUPERGROUP_18S, levels = all_taxa_metat_order)) %>% 
+  group_by(VENT_FIELD, VENT_BIN, LOCATION, SUPERGROUP_18S_ORDER) %>% 
+    summarise(MEAN = mean(scaledTPM)) %>% 
+  ggplot(aes(x = LOCATION, y = MEAN, fill = SUPERGROUP_18S_ORDER)) +
+  geom_bar(stat = "identity", position = "fill", color = "black") +
+  scale_fill_manual(values = all_taxa_metat_color) +
+    theme_linedraw() +
+    theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
+          strip.background = element_blank(),
+          strip.text = element_text(color = "black")) +
+  labs(x = "", y = "Relative abundance transcript count") +
+  facet_grid(cols = vars(VENT_FIELD, VENT_BIN), scales = "free_x", space = "free")
+```
+
+Try above after removing transcripts that appear in only 1 sample.
+
+Repeat taxonomy breakdown, go to family level, etc. 
+
+```{r}
+taxa_keep <- c("Alveolata-Ciliophora", "Alveolata-Dinoflagellata", "Amoebozoa", "Excavata", "Hacrobia", "Rhizaria-Cercozoa", "Rhizaria-Radiolaria", "Rhizaria")
+pink_qual <- c("#fff7f3", "#fcc5c0", "#fa9fb5","#f768a1","#dd3497", "#ae017e", "#7a0177", "black")
+```
+
+
+```{r}
+for_tax %>% 
+  filter(SUPERGROUP_18S %in% taxa_keep) %>% 
+  mutate(SUPERGROUP_18S_ORDER = factor(SUPERGROUP_18S, levels = all_taxa_metat_order)) %>% 
+  group_by(VENT_FIELD, VENT_BIN, LOCATION, SUPERGROUP_18S_ORDER, Family) %>% 
+    summarise(MEAN_family = mean(scaledTPM),
+              logFamily = log(MEAN_family)) %>% 
+  ggplot(aes(x = LOCATION, y = Family, fill = logFamily)) +
+  geom_tile(stat = "identity", linewidth = 0.1, color = "black") +
+      scale_fill_stepsn(
+      # limits = c(-10,10),
+      na.value = NA,
+      show.limits = TRUE,
+      colors = pink_qual) +
+  facet_grid(rows = vars(SUPERGROUP_18S_ORDER), cols = vars(VENT_BIN, VENT_FIELD), scales = "free", space = "free") +
+  theme_minimal() +
+  theme(axis.text.y = element_text(color = "black"),
+        axis.text.x = element_text(color = "black", angle = 90, hjust = 1, vjust = 0))
+```
+
+
 ## Dendrogram by taxa
+
+```{r}
+for_tax_dendro <- long_df_annot %>% 
+  filter(NUM_ZERO < 35) %>%
+  unite(SAMPLENAME, VENT_FIELD, VENT_BIN, LOCATION, SAMPLEID, sep = "_") %>% 
+  group_by(full_classification, SAMPLENAME) %>% 
+    summarise(SUM_bytax = sum(scaledTPM)) %>% 
+  pivot_wider(names_from = SAMPLENAME, values_from = SUM_bytax, values_fill = 0) %>% 
+  column_to_rownames(var = "full_classification")
+```
+
+Compute jaccard distances across all samples.
+```{r}
+dendro_jacc_tax <- vegan::vegdist(t(for_tax_dendro), method = "jaccard")
+cluster_jacc_tax <- hclust(dist(t(dendro_jacc_tax)), method = "average")
+
+# library(ggdendro)
+dendro_plot_tax <- ggdendro::dendro_data(as.dendrogram(cluster_jacc_tax), type = "rectangle")
+label_dendro_order_tax <- as.character(dendro_plot_tax$labels$label)
+```
+
 
 # Functional breakdown
 
+
+## Preprocess
+
+```{r}
+kegg <- read.csv("../KEGG_DB/combined_kegg.csv")
+# dim(kegg)
+kegg <- kegg %>% select(KEGG = KO_number, everything(), -X)
+curated_kegg <- read.csv("../KEGG_DB/reformat-kegg-pfam-skh.csv")
+# head(curated_kegg)
+
+key_geneid <- kegg %>% 
+  distinct() %>% 
+  left_join(curated_kegg, multiple = "all", by = join_by(KEGG)) %>% 
+  select(starts_with("KeggOrthology_"), Category01, Category02, FullName, GeneID, Gene_identification, KEGG, PFAM, Descriptions, REF = REFs)
+```
+
+```{r}
+long_df_fxn_mod <- long_df_annot %>% 
+  separate_longer_delim(KEGG_ko, delim = ",") %>% 
+  mutate(KEGG = str_remove_all(KEGG_ko, "ko:")) %>%
+  filter(NUM_ZERO < 35) %>% 
+  select(LOCATION, VENT_FIELD, VENT_BIN, SAMPLEID, scaledTPM, KEGG, PFAMs, GOs) %>% 
+  left_join(key_geneid, by = "KEGG")
+```
+
+
+## Summary of transcriptional profiles
+
+By KEGG, level A.
+```{r}
+long_df_fxn_mod %>% 
+  select(LOCATION, VENT_FIELD, VENT_BIN, scaledTPM, KEGG, KeggOrthology_A) %>% 
+  distinct() %>% 
+  group_by(LOCATION, VENT_FIELD, VENT_BIN, KeggOrthology_A) %>% 
+    summarise(SUM_A = sum(scaledTPM)) %>% 
+  ggplot(aes(x = LOCATION, y = SUM_A, fill = KeggOrthology_A)) +
+    geom_bar(stat = "identity", position = "fill") +
+  theme_linedraw() +
+    theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
+          strip.background = element_blank(),
+          strip.text = element_text(color = "black")) +
+  labs(x = "", y = "Relative abundance transcript count") +
+  facet_grid(cols = vars(VENT_FIELD, VENT_BIN), scales = "free_x", space = "free")
+```
+
+
+By KEGG category: Metabolism.
+```{r}
+long_df_fxn_mod %>% 
+  filter(KeggOrthology_A == "Metabolism") %>% 
+  select(LOCATION, VENT_FIELD, VENT_BIN, scaledTPM, KEGG, KeggOrthology_B) %>% 
+  distinct() %>% 
+  group_by(LOCATION, VENT_FIELD, VENT_BIN, KeggOrthology_B) %>% 
+    summarise(SUM_A = sum(scaledTPM)) %>% 
+  ggplot(aes(x = LOCATION, y = SUM_A, fill = KeggOrthology_B)) +
+    geom_bar(stat = "identity", position = "fill") +
+  theme_linedraw() +
+    theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
+          strip.background = element_blank(),
+          strip.text = element_text(color = "black")) +
+  labs(x = "", y = "Relative abundance transcript count") +
+  facet_grid(cols = vars(VENT_FIELD, VENT_BIN), scales = "free_x", space = "free")
+```
+
+By KEGG category: Metabolism.
+```{r}
+long_df_fxn_mod %>% 
+  filter(KeggOrthology_A == "Cellular Processes") %>% 
+  select(LOCATION, VENT_FIELD, VENT_BIN, scaledTPM, KEGG, KeggOrthology_B) %>% 
+  distinct() %>% 
+  group_by(LOCATION, VENT_FIELD, VENT_BIN, KeggOrthology_B) %>% 
+    summarise(SUM_A = sum(scaledTPM)) %>% 
+  ggplot(aes(x = LOCATION, y = SUM_A, fill = KeggOrthology_B)) +
+    geom_bar(stat = "identity", position = "fill") +
+  theme_linedraw() +
+    theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
+          strip.background = element_blank(),
+          strip.text = element_text(color = "black")) +
+  labs(x = "", y = "Relative abundance transcript count") +
+  facet_grid(cols = vars(VENT_FIELD, VENT_BIN), scales = "free_x", space = "free")
+```
+
+By KEGG, level B.
+```{r}
+long_df_fxn_mod %>% 
+  select(LOCATION, VENT_FIELD, VENT_BIN, scaledTPM, KEGG, KeggOrthology_B) %>% 
+  distinct() %>% 
+  group_by(LOCATION, VENT_FIELD, VENT_BIN, KeggOrthology_B) %>% 
+    summarise(SUM_A = sum(scaledTPM)) %>% 
+  ggplot(aes(x = LOCATION, y = SUM_A, fill = KeggOrthology_B)) +
+    geom_bar(stat = "identity", position = "fill") +
+  theme_linedraw() +
+    theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
+          strip.background = element_blank(),
+          strip.text = element_text(color = "black")) +
+  labs(x = "", y = "Relative abundance transcript count") +
+  facet_grid(cols = vars(VENT_FIELD, VENT_BIN), scales = "free_x", space = "free")
+```
+
 ## Dendrogram by function
+
+First by KEGG orthology IDs.
+```{r}
+for_kegg_dendro <- long_df_fxn_mod %>% 
+  filter(KEGG != "-") %>% 
+  unite(SAMPLENAME, VENT_FIELD, VENT_BIN, LOCATION, SAMPLEID, sep = "_") %>% 
+  select(SAMPLENAME, KEGG, scaledTPM) %>% distinct() %>% 
+  group_by(KEGG, SAMPLENAME) %>% 
+    summarise(SUM_byKegg = sum(scaledTPM)) %>% 
+  pivot_wider(names_from = SAMPLENAME, values_from = SUM_byKegg, values_fill = 0) %>% 
+  column_to_rownames(var = "KEGG")
+```
+
+Repeat for PFAM IDs
+```{r}
+for_pfam_dendro <- long_df_fxn_mod %>% 
+  filter(PFAMs != "-") %>% 
+  unite(SAMPLENAME, VENT_FIELD, VENT_BIN, LOCATION, SAMPLEID, sep = "_") %>% 
+  select(SAMPLENAME, PFAMs, scaledTPM) %>% distinct() %>% 
+  group_by(PFAMs, SAMPLENAME) %>% 
+    summarise(SUM_bypfam = sum(scaledTPM)) %>% 
+  pivot_wider(names_from = SAMPLENAME, values_from = SUM_bypfam, values_fill = 0) %>% 
+  column_to_rownames(var = "PFAMs")
+```
+
+Compute jaccard distances across all samples.
+
+For KEGG ID
+```{r}
+dendro_jacc_kegg <- vegan::vegdist(t(for_kegg_dendro), method = "jaccard")
+cluster_jacc_kegg <- hclust(dist(t(dendro_jacc_kegg)), method = "average")
+
+# library(ggdendro)
+dendro_plot_kegg <- ggdendro::dendro_data(as.dendrogram(cluster_jacc_kegg), type = "rectangle")
+label_dendro_order_kegg <- as.character(dendro_plot_kegg$labels$label)
+```
+
+### Plot dendrogram by function
+```{r}
+# range(segment(dendro_plot_kegg)$y)
+dendro_plot_output <- ggplot(segment(dendro_plot_kegg)) + 
+  geom_segment(aes(x = x, y = y, xend = xend, yend = yend)) + 
+  coord_flip() + 
+  scale_y_reverse() + 
+  geom_text(aes(x = x, y = y, label = label, angle = 0, hjust = 0), data = label(dendro_plot_kegg)) + 
+  theme_dendro() + 
+  labs(y = "Dissimilarity", title = "Jaccard distance") + 
+  theme(axis.text.x = element_text(color = "black", size = 14), 
+        axis.line.x = element_line(color = "#252525"), 
+        axis.ticks.x = element_line(), axis.title.x = element_text(color = "black", size = 14))
+dendro_plot_output
+```
+
+
 
 # PCA-ordination
 
 Use vent samples only, across vent fields are OK.
 
+
+# x-y plot: Number of unique taxa, number of unique KEGG IDs?
+
+Plot these to look at how the number of unique taxa vs. unique KEGG IDs changes for each vent field
+
+# 
