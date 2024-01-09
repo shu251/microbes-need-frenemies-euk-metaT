@@ -43,61 +43,67 @@ euks_annot_only <- as.character(
     .[["transcript_name"]])
 
 # Subset txi directly
-subsetTxi <- function(txi, samples, include_genes=rownames(txi$counts))
-{
-  genes <- rownames(txi$counts)[rownames(txi$counts) %in% include_genes]
-  txi$abundance <- txi$abundance[genes, samples$sample]
-  txi$counts <- txi$counts[genes, samples$sample]
-  txi$length <- txi$length[genes, samples$sample]
-  return(txi)
-}
+# subsetTxi <- function(txi, samples, include_genes=rownames(txi$counts))
+# {
+#   genes <- rownames(txi$counts)[rownames(txi$counts) %in% include_genes]
+#   txi$abundance <- txi$abundance[genes, samples$sample]
+#   txi$counts <- txi$counts[genes, samples$sample]
+#   txi$length <- txi$length[genes, samples$sample]
+#   return(txi)
+# }
+# 
+# 
+# cat("\n\nStart txi subset\n\n")
+# # All samples, no grazing experiments
+# txi_gr_vd <- subsetTxi(txi, gr_vd, euks_annot_only)
+# txi_gr_vd_vent <- subsetTxi(txi, gr_vd_vent, euks_annot_only)
+# txi_gr_vd_bsw_plume <- subsetTxi(txi, gr_vd_bsw_plume, euks_annot_only)
 
+# Completed Jan 9
+# save(txi_gr_vd, txi_gr_vd_vent, txi_gr_vd_bsw_plume, file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/txi-gr_vd_all.RData")
+# cat("\n\n Saved txi Robjects \n\n")
 
-cat("\n\nStart txi subset\n\n")
-# All samples, no grazing experiments
-txi_gr_vd <- subsetTxi(txi, gr_vd, euks_annot_only)
-txi_gr_vd_vent <- subsetTxi(txi, gr_vd_vent, euks_annot_only)
-txi_gr_vd_bsw_plume <- subsetTxi(txi, gr_vd_bsw_plume, euks_annot_only)
-
-save(txi_gr_vd, txi_gr_vd_vent, txi_gr_vd_bsw_plume, file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/txi-gr_vd_all.RData")
-cat("\n\n Saved txi Robjects \n\n")
 
 # Extract TXI values:
-txi <- txi_gr_vd
-library(tximport)
+# txi <- txi_gr_vd
+# library(tximport)
+# 
+# counts_scaled <- makeCountsFromAbundance(
+#   as.matrix(txi$counts),
+#   as.matrix(txi$abundance),
+#   as.matrix(txi$length),
+#   countsFromAbundance = "scaledTPM"
+#   # countsFromAbundance = "lengthScaledTPM"
+# )
 
-counts_scaled <- makeCountsFromAbundance(
-  as.matrix(txi$counts),
-  as.matrix(txi$abundance),
-  as.matrix(txi$length),
-  countsFromAbundance = "scaledTPM"
-  # countsFromAbundance = "lengthScaledTPM"
-)
-# ?makeCountsFromAbundance()
-counts_df <- as.data.frame(counts_scaled)
+# counts_df <- as.data.frame(counts_scaled)
+# 
+# names_orig <- colnames(counts_df)
+# names_new <- sub("_[^_]+$", "", names_orig)
+# colnames(counts_df) <- names_new
+# 
+# mean_counts_df <- counts_df %>%
+#   cbind(as.list(.) %>%
+#           Filter(is.numeric, .) %>%
+#           split(names(.)) %>%
+#           lapply(as.data.frame) %>%
+#           lapply(rowMeans) %>%
+#           setNames(paste0("mean.", names(.)))) %>% 
+#   select(starts_with("mean"))
 
-names_orig <- colnames(counts_df)
-names_new <- sub("_[^_]+$", "", names_orig)
-colnames(counts_df) <- names_new
+# Completed Jan 9
+# save(mean_counts_df, file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/gr_vd_samples_vent_metaT.RData")
 
-mean_counts_df <- counts_df %>%
-  cbind(as.list(.) %>%
-          Filter(is.numeric, .) %>%
-          split(names(.)) %>%
-          lapply(as.data.frame) %>%
-          lapply(rowMeans) %>%
-          setNames(paste0("mean.", names(.)))) %>% 
-  select(starts_with("mean"))
+# cat("\n\n Saved count df from txi\n\n")
 
-save(mean_counts_df, file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/gr_vd_samples_vent_metaT.RData")
-
-cat("\n\n Saved count df from txi\n\n")
+cat("\nImport mean_counts_df\n")
+load(file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/gr_vd_samples_vent_metaT.RData", verbose = TRUE)
 
 # Process to long format
 long_df <- mean_counts_df %>% 
-  rowwise() %>% 
-  mutate(NUM_ZERO = sum(c_across(starts_with("mean.")) == 0)) %>% 
   rownames_to_column(var = "SequenceID") %>% 
+  rowwise() %>% 
+  mutate(NUM_ZERO = sum(c_across(starts_with("mean.")) == 0)) %>%
   pivot_longer(cols = starts_with("mean."), values_to = "scaledTPM") %>% 
   filter(scaledTPM > 0) %>% 
   separate(name, c("mean.field", "LIBRARY_NUM", "fieldyear", "LOCATION", "SAMPLETYPE", "SAMPLEID"), "_", 
@@ -114,6 +120,11 @@ long_df <- mean_counts_df %>%
     TRUE ~ "Vent"
   ))
 glimpse(long_df)
+
+
+#
+as_is <- c("Amoebozoa", "Apusozoa", "Excavata", "Hacrobia", "Archaeplastida")
+#
 
 long_df_annot <- long_df %>% 
   left_join(taxfxn, by = "SequenceID") %>% 
@@ -146,7 +157,10 @@ cat("\n\nSaved GR and VD longformat data\n\n")
 
 # Generate DE transcript information:
 ## Re import data for consistency.
-load(file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/txi-gr_vd_all.RData")
+cat("\nImport txi objects\n")
+
+load(file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/txi-gr_vd_all.RData", verbose = TRUE)
+
 sample_merged <- read_delim("input-docs/sample_merged_txi.txt")
 
 # Function to subset txi and generate DE
@@ -239,7 +253,6 @@ deseq_vent_novent <- function(sample_set, gene_set){
   cat("\n\nCompleted\n\n")
   return(de_loc_output)
 }
-
 
 de_gr_vd <- deseq_vent_novent(gr_vd, euks_annot_only)
 
