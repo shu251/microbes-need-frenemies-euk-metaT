@@ -150,7 +150,6 @@ mcr_wtax_supergroup <- mcr_wtax_only %>%
 # head(mcr_wtax_supergroup)
 ```
 
-
 ```{r}
 mcr_wtax_supergroup %>% 
   ggplot(aes(x = LOCATION, y = MEAN, fill = SUPERGROUP)) +
@@ -242,7 +241,6 @@ mcr_wtax_only %>%
   facet_grid(cols = vars(VENT_FIELD, VENT_BIN), scales = "free_x", space = "free")
 ```
 
-
 ### Summary of taxonomic groups
 
 ```{r, fig.width = 5, fig.height=5}
@@ -332,7 +330,6 @@ unique(taxa_mcr_summarized$SUPERGROUP_18S)
 glimpse(taxa_mcr_summarized)
 ```
 
-
 ```{r}
 taxa_keep <- c("Alveolata-Ciliophora", "Alveolata-Dinoflagellata", "Amoebozoa", "Excavata", "Hacrobia", "Rhizaria-Cercozoa", "Rhizaria-Radiolaria", "Rhizaria")
 pink_qual <- c("#fff7f3", "#fcc5c0", "#fa9fb5","#f768a1","#dd3497", "#ae017e", "#7a0177", "black")
@@ -359,8 +356,6 @@ taxa_mcr_summarized %>%
   theme(axis.text.y = element_text(color = "black"),
         axis.text.x = element_text(color = "black", angle = 90, hjust = 1, vjust = 0))
 ```
-
-
 
 # DE seq MCR
 
@@ -1090,6 +1085,7 @@ Subset to only the vent sites. The difference between the background and vent si
 # | message: false
 library(vegan); library(ggdendro); library(compositions)
 ```
+
 ```{r}
 load("input-docs/mcr_alltranscripts_annot.RData", verbose = TRUE)
 
@@ -1099,7 +1095,6 @@ load("input-docs/mcr_annotated_mean.RData", verbose = TRUE)
 # head(mcr_all)
 load("for-plots-mcr.RData", verbose = TRUE)
 ```
-
 
 ```{r}
 glimpse(mcr_annotated_mean)
@@ -1126,6 +1121,7 @@ logratio_mcr <- data.frame(
 ```
 
 Compute principle components, plot eigen values individually.
+
 ```{r}
 pca_logratio <- prcomp(logratio_mcr)
 variance_logratio <- (pca_logratio$sdev^2)/sum(pca_logratio$sdev^2)
@@ -1133,7 +1129,9 @@ variance_logratio <- (pca_logratio$sdev^2)/sum(pca_logratio$sdev^2)
 barplot(variance_logratio, main = "Log-Ratio PCA Screeplot", xlab = "PC Axis", ylab = "% Variance", 
     cex.names = 1.5, cex.axis = 1.5, cex.lab = 1.5, cex.main = 1.5)
 ```
+
 Modify data to put PCA points into dataframe format.
+
 ```{r}
 mcr_pca_pts <- data.frame(pca_logratio$x, SAMPLE = rownames(pca_logratio$x)) %>%
   rownames_to_column(var = "sampleid") %>% 
@@ -1171,7 +1169,6 @@ mcr_pca_pts %>%
         panel.grid.minor = element_blank()) +
   labs(x =  paste(pc1, "%", sep = ""), y = paste(pc2, "%", sep = ""))
 ```
-
 
 # Session Information
 
