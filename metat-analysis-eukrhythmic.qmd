@@ -189,19 +189,16 @@ To execute the above code for this project, see `scripts/subset-txi.R`.
 
 Explanation of outputs:
 
-
-# Analyze samples _in situ_ 
+# Analyze samples *in situ*
 
 ```{r}
 load(file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/txi-allsamples.RData", verbose = TRUE)
 ```
 
-
-```
+```         
 txi_euk_annot <- subsetTxi(txi, all_no_tf, euks_annot_only)
 txi_euk_only <- subsetTxi(txi, all_no_tf, euks_only)
 ```
-
 
 ## Extract count tables for analyses
 
@@ -243,8 +240,8 @@ mean_counts_df <- counts_df %>%
   select(starts_with("mean"))
 ```
 
-
 Export for downstream analysis
+
 ```{r}
 glimpse(mean_counts_df)
 ```
@@ -253,11 +250,9 @@ glimpse(mean_counts_df)
 save(mean_counts_df, file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/all_samples_vent_metaT.RData")
 ```
 
-
 ```{r}
 # head(taxfxn)
 ```
-
 
 # Log FC for whole dataset
 
@@ -273,10 +268,7 @@ Extract centered data
 library(DESeq2)
 ```
 
-Get logFC for Vent versus non-vent and for plume versus background.
-`scripts/subset-txi.R`
-`scripts/subset-txi_Plume-v-BSW.R`
-
+Get logFC for Vent versus non-vent and for plume versus background. `scripts/subset-txi.R` `scripts/subset-txi_Plume-v-BSW.R`
 
 ```{r}
 # output is a DESeqtransform object

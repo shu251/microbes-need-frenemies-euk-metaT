@@ -49,6 +49,12 @@ axial <- sample_merged %>%
   filter(SITE == "AXIAL") %>% 
   select(sample = SAMPLE_REP)
 
+
+gr_vd <- sample_merged %>% 
+  filter(SITE != "AXIAL") %>% 
+  filter(EXP == "insitu") %>% 
+  select(sample = SAMPLE_REP)
+
 taxfxn <- read.table("/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/TaxonomicAndFunctionalAnnotations.csv", header = TRUE, sep = "\t")
 
 ## TESTING
