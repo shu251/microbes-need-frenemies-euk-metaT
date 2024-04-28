@@ -11,11 +11,13 @@ editor_options:
 Library
 
 ```{r}
+# | message: false
 library(tidyverse)
 library(DESeq2)
 # library(tximport)
 library(ggupset)
 library(ggdendro)
+library(treemapify)
 ```
 
 # Import data
@@ -25,7 +27,7 @@ Subset Gorda Ridge and Mid-Cayman Rise hydrothermal vent metatranscriptome data.
 ```{r}
 # | echo: true
 # | eval: false
-load(file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/gr_vd_samples_vent_metaT.RData", verbose = TRUE)
+# load(file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/gr_vd_samples_vent_metaT.RData", verbose = TRUE)
 ```
 
 `mean_counts_df`: mean of scaled TPM from tximport command. This is the correct TPM values that incorporate transcript length. When replicates were run across different flow cells (REP 1 vs. REP 2), these were averaged. Rownames equal the transcript IDs.
@@ -33,7 +35,7 @@ load(file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/gr_vd_
 ```{r}
 # | echo: true
 # | eval: false
-taxfxn <- read.table("/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/TaxonomicAndFunctionalAnnotations.csv", header = TRUE, sep = "\t")
+# taxfxn <- read.table("/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/TaxonomicAndFunctionalAnnotations.csv", header = TRUE, sep = "\t")
 # taxfxn <- read.table("/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/TaxonomicAndFunctionalAnnotations.csv", header = TRUE, nrows = 250, sep = "\t")
 ```
 
@@ -43,26 +45,26 @@ taxfxn <- read.table("/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-outp
 # | echo: true
 # | eval: false
 # colnames(mean_counts_df)
-long_df <- mean_counts_df %>% 
-  rowwise() %>% 
-  mutate(NUM_ZERO = sum(c_across(starts_with("mean.")) == 0)) %>% 
-  rownames_to_column(var = "SequenceID") %>% 
-  pivot_longer(cols = starts_with("mean."), values_to = "scaledTPM") %>% 
-  filter(scaledTPM > 0) %>% 
-  separate(name, c("mean.field", "LIBRARY_NUM", "fieldyear", "LOCATION", "SAMPLETYPE", "SAMPLEID"), "_", 
-        remove = FALSE) %>% 
-  select(-mean.field, -name) %>% 
-  mutate(VENT_FIELD = case_when(grepl("Piccard", fieldyear) ~ "Piccard",
-                           grepl("VonDamm", fieldyear) ~ "Von Damm",
-         grepl("Axial", fieldyear) ~ "Axial",
-         grepl("Gorda", fieldyear) ~ "Gorda Ridge")) %>% 
-  mutate(VENT_BIN = case_when(
-    (LOCATION == "Background" | LOCATION == "Plume" | LOCATION == "BSW") ~ "Non-vent",
-    grepl("IntlDistrict", LOCATION) ~ "Non-vent", 
-    grepl("ASHES", LOCATION) ~ "Non-vent", 
-    TRUE ~ "Vent"
-  ))
-glimpse(long_df)
+# long_df <- mean_counts_df %>% 
+#   rowwise() %>% 
+#   mutate(NUM_ZERO = sum(c_across(starts_with("mean.")) == 0)) %>% 
+#   rownames_to_column(var = "SequenceID") %>% 
+#   pivot_longer(cols = starts_with("mean."), values_to = "scaledTPM") %>% 
+#   filter(scaledTPM > 0) %>% 
+#   separate(name, c("mean.field", "LIBRARY_NUM", "fieldyear", "LOCATION", "SAMPLETYPE", "SAMPLEID"), "_", 
+#         remove = FALSE) %>% 
+#   select(-mean.field, -name) %>% 
+#   mutate(VENT_FIELD = case_when(grepl("Piccard", fieldyear) ~ "Piccard",
+#                            grepl("VonDamm", fieldyear) ~ "Von Damm",
+#          grepl("Axial", fieldyear) ~ "Axial",
+#          grepl("Gorda", fieldyear) ~ "Gorda Ridge")) %>% 
+#   mutate(VENT_BIN = case_when(
+#     (LOCATION == "Background" | LOCATION == "Plume" | LOCATION == "BSW") ~ "Non-vent",
+#     grepl("IntlDistrict", LOCATION) ~ "Non-vent", 
+#     grepl("ASHES", LOCATION) ~ "Non-vent", 
+#     TRUE ~ "Vent"
+#   ))
+# glimpse(long_df)
 ```
 
 ## Join with tax and fxn
@@ -71,29 +73,29 @@ glimpse(long_df)
 # | echo: true
 # | eval: false
 # glimpse(taxfxn)
-long_df_annot <- long_df %>% 
-  left_join(taxfxn, by = "SequenceID") %>% 
-  separate(full_classification, c("Domain", "Supergroup", "Phylum", "Class", "Order", "Family", "Genus_spp"), sep = "; ", remove = FALSE) %>% 
-  mutate(SUPERGROUP_18S = case_when(
-    Phylum == "Ciliophora" ~ "Alveolata-Ciliophora",
-    Phylum == "Dinophyta" ~ "Alveolata-Dinoflagellata",
-    # Phylum == "Perkinsea" ~ "Protalveolata",
-    # Phylum == "Colponemidia" ~ "Protalveolata",
-    # Phylum == "Chromerida" ~ "Protalveolata",
-    Supergroup == "Alveolata" ~ "Other Alveolata",
-    Supergroup %in% as_is ~ Supergroup,
-    Supergroup == "Haptista" ~ "Hacrobia",
-    Phylum == "Radiolaria" ~ "Rhizaria-Radiolaria",
-    Phylum == "Cercozoa" ~ "Rhizaria-Cercozoa",
-    (Supergroup == "Rhizaria" & Phylum != "Radiolaria" & Phylum != "Cercozoa") ~ "Rhizaria",
-    Order == "Bigyra" ~ "Stramenopiles-Opalozoa;Sagenista",
-    Class == "Ochromonadales" ~ "Stramenopiles-Ochrophyta",
-    Supergroup == "Stramenopiles" ~ "Stramenopiles",
-    Supergroup == "Opisthokonta" ~ "Opisthokonta",
-    (is.na(Supergroup) | Supergroup == "Eukaryota incertae sedis") ~ "Unknown Eukaryota",
-    TRUE ~ "Other-metaT only"))
-# head(long_df_annot)
-dim(long_df_annot);dim(long_df)
+# long_df_annot <- long_df %>% 
+#   left_join(taxfxn, by = "SequenceID") %>% 
+#   separate(full_classification, c("Domain", "Supergroup", "Phylum", "Class", "Order", "Family", "Genus_spp"), sep = "; ", remove = FALSE) %>% 
+#   mutate(SUPERGROUP_18S = case_when(
+#     Phylum == "Ciliophora" ~ "Alveolata-Ciliophora",
+#     Phylum == "Dinophyta" ~ "Alveolata-Dinoflagellata",
+#     # Phylum == "Perkinsea" ~ "Protalveolata",
+#     # Phylum == "Colponemidia" ~ "Protalveolata",
+#     # Phylum == "Chromerida" ~ "Protalveolata",
+#     Supergroup == "Alveolata" ~ "Other Alveolata",
+#     Supergroup %in% as_is ~ Supergroup,
+#     Supergroup == "Haptista" ~ "Hacrobia",
+#     Phylum == "Radiolaria" ~ "Rhizaria-Radiolaria",
+#     Phylum == "Cercozoa" ~ "Rhizaria-Cercozoa",
+#     (Supergroup == "Rhizaria" & Phylum != "Radiolaria" & Phylum != "Cercozoa") ~ "Rhizaria",
+#     Order == "Bigyra" ~ "Stramenopiles-Opalozoa;Sagenista",
+#     Class == "Ochromonadales" ~ "Stramenopiles-Ochrophyta",
+#     Supergroup == "Stramenopiles" ~ "Stramenopiles",
+#     Supergroup == "Opisthokonta" ~ "Opisthokonta",
+#     (is.na(Supergroup) | Supergroup == "Eukaryota incertae sedis") ~ "Unknown Eukaryota",
+#     TRUE ~ "Other-metaT only"))
+# # head(long_df_annot)
+# dim(long_df_annot);dim(long_df)
 ```
 
 ```{r}
@@ -117,6 +119,23 @@ Import toy dataset. Derived from randomly subsampling 3000 transcripts from full
 # long_df <- long_df_3000
 # long_df_annot <- long_df_annot_3000
 ```
+
+## Import curated KEGG IDs
+
+
+```{r}
+kegg <- read.csv("../KEGG_DB/combined_kegg.csv")
+# dim(kegg)
+kegg <- kegg %>% select(KEGG = KO_number, everything(), -X)
+curated_kegg <- read.csv("../KEGG_DB/reformat-kegg-pfam-skh.csv")
+# head(curated_kegg)
+
+key_geneid <- kegg %>% 
+  distinct() %>% 
+  left_join(curated_kegg, multiple = "all", by = join_by(KEGG)) %>% 
+  select(starts_with("KeggOrthology_"), Category01, Category02, FullName, GeneID, Gene_identification, KEGG, PFAM, Descriptions, REF = REFs)
+```
+
 
 # Get basic data stats
 
@@ -262,9 +281,14 @@ upset_input %>%
     geom_bar(color = NA, width = 0.7, aes(fill = FXN_BIN)) +
     ggupset::scale_x_upset(order_by = "freq", n_intersections = 30) +
     scale_y_continuous(expand = c(0,0)) +
-    labs(x = "", y = "Shared ASVs") +
-    theme_linedraw()
+    labs(x = "", y = "Shared transcripts") +
+    theme_linedraw() +
+  theme(plot.margin = margin(1, 1, 1, 5, "cm"),
+        axis.text = element_text(color = "black")) 
 ```
+The above figure is filtered first by transripts that were found in more than 1 sample.
+> Across vent and background samples, transcripts were shared across background samples (deep seawater and plume) more often than between vent sites. This primarily occured at Von Damm and Piccard. For transcripts found in more than 1 sample, more of them had been annotated, compared to those without an assigned gene ID. 
+
 
 ```{r, fig.height=8, fig.width=13}
 upset_input %>%
@@ -278,9 +302,173 @@ upset_input %>%
     geom_bar(color = NA, width = 0.7, aes(fill = FXN_BIN)) +
     ggupset::scale_x_upset(order_by = "freq", n_intersections = 30) +
     scale_y_continuous(expand = c(0,0)) +
-    labs(x = "", y = "Shared ASVs") +
-    theme_linedraw()
+    labs(x = "", y = "Shared transcripts") +
+     theme_linedraw() +
+  theme(plot.margin = margin(1, 1, 1, 5, "cm"),
+        axis.text = element_text(color = "black")) 
+
 ```
+
+
+> Interestingly, the number of transcripts found at only 1 vent site, means these transcripts were originally shared between this vent site and 1 of the background (non-vent samples). Beyond this, shared transcripts were primarily between Von Damm and Piccard. 
+
+```{r}
+glimpse(upset_input)
+unique(upset_input$SUPERGROUP_18S)
+```
+
+Isolate ciliate sonly
+```{r, fig.height=8, fig.width=13}
+upset_input %>%
+  filter(SUPERGROUP_18S == "Alveolata-Ciliophora") %>%
+  filter(grepl("Vent ", SAMPLE_NAME)) %>%
+  mutate(FXN_BIN = case_when(
+    KEGG_ko == "-" ~ "No gene ID",
+    TRUE ~ "Gene ID assigned")) %>%
+  group_by(SequenceID, FXN_BIN) %>%
+    summarise(SAMPLE = list(SAMPLE_NAME)) %>%
+  ggplot(aes(x = SAMPLE, fill = FXN_BIN)) +
+    geom_bar(color = NA, width = 0.7, aes(fill = FXN_BIN)) +
+    ggupset::scale_x_upset(order_by = "freq", n_intersections = 30) +
+    scale_y_continuous(expand = c(0,0)) +
+    labs(x = "", y = "Shared transcripts") +
+    theme_linedraw() +
+  theme(plot.margin = margin(1, 1, 1, 5, "cm"),
+        axis.text = element_text(color = "black")) 
+```
+
+
+An new hypothesis from this is that there may be a "baseline" background transcript profile. *What transcripts were ONLY shared between non-vent and vent samples?* Contrast the metabolic profile of these to transcripts that were ONLY found at vent sites. 
+
+```{r}
+head(long_df_annot)
+```
+
+
+```{r, fig.width=8, fig.height=5}
+upset_vd <- long_df_annot %>% 
+  filter(VENT_BIN == "Vent") %>%
+  filter(VENT_FIELD == "Von Damm") %>% 
+  unite(SAMPLE_NAME, VENT_FIELD, VENT_BIN, LOCATION, sep = " ", remove = FALSE) %>% 
+  unite(PROTEIN_ID, KEGG_ko, PFAMs, sep = "_") %>% 
+  group_by(SAMPLE_NAME, PROTEIN_ID) %>% 
+    summarise(SUM = sum(scaledTPM)) %>% 
+  group_by(PROTEIN_ID) %>%
+    summarise(SAMPLE = list(SAMPLE_NAME))
+str(unique(upset_vd$SAMPLE)[119])
+
+tmp <- long_df_annot %>% 
+  filter(VENT_BIN == "Vent") %>%
+  filter(VENT_FIELD == "Von Damm") %>% 
+  unite(SAMPLE_NAME, VENT_FIELD, VENT_BIN, LOCATION, sep = " ") %>% 
+  distinct()
+all_vd_vents <- as.character(unique(tmp$SAMPLE_NAME))
+# all_vd_vents
+# str(upset_vd)
+# tmp2 <- upset_vd %>% 
+#   filter(SAMPLE == all_vd_vents)
+# length(unique(tmp2$PROTEIN_ID))
+# tmp2
+```
+```{r, fig.height=5, fig.width=8}
+upset_vd %>% 
+  ggplot(aes(x = SAMPLE)) +
+    geom_bar(color = NA, width = 0.7) +
+    ggupset::scale_x_upset(order_by = "freq", n_intersections = 30) +
+    scale_y_continuous(expand = c(0,0)) +
+    labs(x = "", y = "Shared protein identity") +
+     theme_linedraw() +
+  theme(plot.margin = margin(1, 1, 1, 5, "cm"),
+        axis.text = element_text(color = "black")) 
+# ggsave("osm-figs/upset_vd_only_vent.svg", width = 8, height = 5,
+       # device = "svg", limitsize = FALSE)
+
+```
+Repeat with ciliates only
+```{r, fig.height=5, fig.width=8}
+long_df_annot %>% 
+  filter(VENT_BIN == "Vent") %>%
+  filter(VENT_FIELD == "Von Damm") %>% 
+  filter(SUPERGROUP_18S == "Alveolata-Ciliophora") %>%
+  unite(SAMPLE_NAME, VENT_FIELD, VENT_BIN, LOCATION, sep = " ", remove = FALSE) %>% 
+  unite(PROTEIN_ID, KEGG_ko, PFAMs, sep = "_") %>% 
+  group_by(SAMPLE_NAME, PROTEIN_ID) %>% 
+    summarise(SUM = sum(scaledTPM)) %>% 
+  group_by(PROTEIN_ID) %>%
+    summarise(SAMPLE = list(SAMPLE_NAME)) %>% 
+  ggplot(aes(x = SAMPLE)) +
+    geom_bar(color = NA, width = 0.7) +
+    ggupset::scale_x_upset(order_by = "freq", n_intersections = 30) +
+    scale_y_continuous(expand = c(0,0)) +
+    labs(x = "", y = "Shared protein identity") +
+     theme_linedraw() +
+  theme(plot.margin = margin(1, 1, 1, 5, "cm"),
+        axis.text = element_text(color = "black")) 
+# ggsave("osm-figs/upset_vd_only_vent.svg", width = 8, height = 5,
+       # device = "svg", limitsize = FALSE)
+
+```
+
+
+```{r}
+# head(long_df_annot)
+shared_vd_vents <- long_df_annot %>% 
+  filter(VENT_BIN == "Vent") %>%
+  filter(VENT_FIELD == "Von Damm") %>% 
+  unite(SAMPLE_NAME, VENT_FIELD, VENT_BIN, LOCATION, sep = " ") %>% 
+  unite(PROTEIN_ID, KEGG_ko, PFAMs, sep = "_") %>% 
+  select(PROTEIN_ID, SAMPLE_NAME, scaledTPM) %>%
+  pivot_wider(names_from = SAMPLE_NAME, values_from = scaledTPM, values_fill = NA, values_fn = sum) %>% 
+  na.omit()
+
+shared_proteins <- as.character(unique(shared_vd_vents$PROTEIN_ID))
+
+shared_proteins_df <- long_df_annot %>% 
+  filter(VENT_BIN == "Vent") %>%
+  filter(VENT_FIELD == "Von Damm") %>% 
+  # unite(SAMPLE_NAME, VENT_FIELD, VENT_BIN, LOCATION, sep = " ") %>% 
+  unite(PROTEIN_ID, KEGG_ko, PFAMs, sep = "_", remove = FALSE) %>% 
+  filter(PROTEIN_ID %in% shared_proteins)
+# head(key_geneid)
+total <- sum(long_df_annot$scaledTPM)
+# shared <- sum(shared_proteins_df$scaledTPM)
+# shared/total
+```
+
+```{r}
+# View(shared_proteins_df)
+shared_proteins_df %>% 
+  separate_longer_delim(KEGG_ko, delim = ",") %>% 
+  mutate(KEGG = str_remove_all(KEGG_ko, "ko:")) %>%
+  left_join(key_geneid, by = "KEGG") %>% 
+  group_by(SUPERGROUP_18S, KeggOrthology_B, KeggOrthology_C, GeneID) %>% 
+  summarise(SUM_TPM = sum(scaledTPM)) %>% 
+  ggplot(aes(x = SUPERGROUP_18S, y = SUM_TPM), fill = KeggOrthologyC) +
+  geom_bar(stat = "identity")
+```
+
+
+
+```{r}
+long_df_annot %>% 
+  filter(VENT_BIN == "Vent") %>%
+  filter(VENT_FIELD == "Von Damm") %>% 
+  unite(SAMPLE_NAME, VENT_FIELD, VENT_BIN, LOCATION, sep = " ", remove = FALSE) %>% 
+  # unite(PROTEIN_ID, KEGG_ko, PFAMs, sep = "_") %>% 
+  group_by(SAMPLE_NAME, full_classification) %>% 
+    summarise(SUM = sum(scaledTPM)) %>% 
+  group_by(full_classification) %>%
+    summarise(SAMPLE = list(SAMPLE_NAME)) %>%
+  ggplot(aes(x = SAMPLE)) +
+    geom_bar(color = NA, width = 0.7) +
+    ggupset::scale_x_upset(order_by = "freq", n_intersections = 30) +
+    scale_y_continuous(expand = c(0,0)) +
+    labs(x = "", y = "Shared taxonomic identity") +
+     theme_linedraw() +
+  theme(plot.margin = margin(1, 1, 1, 5, "cm"),
+        axis.text = element_text(color = "black")) 
+```
+
 
 ## What are these unique transcripts?
 
@@ -293,6 +481,105 @@ length(unique(unique_transcripts$SequenceID))
 seqID_unique <- as.character(unique(unique_transcripts$SequenceID))
 ```
 
+> Unique transcripts were ~224K.
+
+## What transcripts were shared across vent and non-vent? vs. only at vent?
+
+```{r}
+# str(long_df_annot)
+# pivot wide by VENT_BIN
+
+eval_shared_byloc <- long_df_annot %>% 
+  filter(NUM_ZERO < more_than_2) %>%
+  select(SequenceID, VENT_FIELD, VENT_BIN, scaledTPM, KEGG_ko, PFAMs, SUPERGROUP_18S) %>% distinct() %>% 
+  # Sum when vent and non-vent were duplicated. 
+  pivot_wider(names_from = VENT_BIN, values_from = scaledTPM, values_fill = NA, values_fn = sum) %>% 
+  group_by(SequenceID, KEGG_ko, PFAMs, SUPERGROUP_18S) %>% 
+    summarise(VENT_FIELDS = str_c(VENT_FIELD, collapse = ", "),
+              SUM_Non_vent = sum(`Non-vent`),
+              SUM_vent = sum(Vent)) %>%
+  mutate(CATEGORY = case_when(
+  (is.na(SUM_Non_vent) & !is.na(SUM_vent))  ~ "Shared in vents only",
+  (!is.na(SUM_Non_vent) & is.na(SUM_vent))  ~ "Shared in background only",
+  (!is.na(SUM_Non_vent) & !is.na(SUM_vent))  ~ "Found in vents & background",
+  (is.na(SUM_Non_vent) & is.na(SUM_vent))  ~ "NA in both"
+  )) %>% 
+  filter(CATEGORY != "NA in both")
+```
+
+```{r}
+# glimpse(eval_shared_byloc)
+```
+What does the taxonomic distribution look like across these categories?
+
+```{r}
+all_taxa_metat_order <- c("Alveolata-Ciliophora", "Alveolata-Dinoflagellata", "Other Alveolata", "Amoebozoa", "Apusozoa","Excavata", "Hacrobia","Archaeplastida", "Rhizaria-Cercozoa",  "Rhizaria-Radiolaria","Rhizaria",  "Stramenopiles", "Stramenopiles-Ochrophyta","Stramenopiles-Opalozoa;Sagenista",  "Opisthokonta", "Other-metaT only", "Unknown Eukaryota")
+
+all_taxa_metat_color = c("#fa9fb5", "#c51b8a", "#1d91c0","#67000d", "#ef3b2c", "#ffffcc","#feb24c",  "#c7e9b4",  "#253494", "#9e9ac8","lightblue", "#238b45", "#54278f", "#bdbdbd", "#fee6ce", "#cb181d", "#636363","#000000")
+
+# as_is <- c("Amoebozoa", "Apusozoa", "Excavata", "Hacrobia", "Archaeplastida")
+```
+
+
+```{r, fig.width=10, fig.height=4}
+eval_shared_byloc %>% 
+  mutate(SUPERGROUP_18S_ORDER = factor(SUPERGROUP_18S, levels = all_taxa_metat_order)) %>% 
+  group_by(SUPERGROUP_18S_ORDER, CATEGORY) %>% 
+  summarise(TRANSCRIPT_COUNT = n()) %>% 
+  ggplot(aes(x = CATEGORY, y = TRANSCRIPT_COUNT, fill = SUPERGROUP_18S_ORDER)) +
+    geom_bar(stat = "identity", color = "black") +
+  coord_flip() +
+  scale_fill_manual(values = all_taxa_metat_color) +
+    theme_linedraw() +
+    theme(axis.text = element_text(color = "black"),
+          legend.position = "bottom",
+          legend.title = element_blank()) +
+  labs(x = "", y = "Total transcripts")
+```
+Repeat, with KEGG information.
+
+```{r, fig.height=24, fig.width=12}
+# head(key_geneid)
+yl_red <- c("#ffffcc", "#fed976", "#feb24c", "#fc4e2a", "#e31a1c", "#b10026")
+reds <- c("#f7f7f7","#fee5d9", "#fcae91", "#fb6a4a", "#a50f15")
+eval_shared_byloc %>% 
+  separate_longer_delim(KEGG_ko, delim = ",") %>% 
+  mutate(KEGG = str_remove_all(KEGG_ko, "ko:")) %>%
+  left_join(key_geneid) %>% 
+  filter(!is.na(KeggOrthology_A)) %>% 
+  group_by(KeggOrthology_A, KeggOrthology_B, KeggOrthology_C, CATEGORY) %>% 
+  summarise(TRANSCRIPT_COUNT = n()) %>% 
+  ggplot(aes(x = CATEGORY, y = KeggOrthology_C, fill = TRANSCRIPT_COUNT)) +
+    geom_tile() +
+  scale_fill_stepsn(
+      # limits = c(-5,5),
+      # breaks = c(0.0, 3.5, 7.0, 10.5),
+      show.limits = TRUE,
+      # colors = reds) +
+      colors = yl_red) +
+  facet_grid(rows = vars(KeggOrthology_B),
+             space = "free", scales = "free") +
+    theme_linedraw() +
+    theme(axis.text = element_text(color = "black"),
+          legend.position = "bottom",
+          legend.title = element_blank(),
+          strip.text.y = element_text(angle = 0, hjust = 0, vjust = 0.5))
+```
+
+> This figure didn't work that well. But the take home I'm seeing is that a higher total number of transcripts were shared across background samples. This means that the communities in the background. Deep seawater or plume, were more stable to one another. This extends to samples that had any transcripts shared, they are all more likely to be regulator, ribosomal, housekeeping like transcripts. 
+
+
+
+
+
+
+
+```{r}
+head(long_df_annot)
+```
+
+
+
 # DESeq
 
 See output from `subset-txi_Plume-v-BSW.R` and `metaT-deseq-Vent_NonVent-all.R` to look for DESeq analysis and relevant output.
@@ -300,13 +587,13 @@ See output from `subset-txi_Plume-v-BSW.R` and `metaT-deseq-Vent_NonVent-all.R` 
 ```{r}
 # | echo: true
 # | eval: false
-load("/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/background_vs_plume_DESeq.RData", verbose = TRUE)
+# load("/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/background_vs_plume_DESeq.RData", verbose = TRUE)
 ```
 
 ```{r}
 # | echo: true
 # | eval: false
-load(file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/all-vent-sites_vent_vs_novent_DESeq.RData", verbose = TRUE)
+# load(file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/all-vent-sites_vent_vs_novent_DESeq.RData", verbose = TRUE)
 # de_all_fields, de_all_fields_unannot
 ```
 
@@ -317,13 +604,13 @@ Across vent fields, what is significantly upregulated and downregulated in vent 
 ```{r}
 # | echo: true
 # | eval: false
-glimpse(de_all_fields)
+# glimpse(de_all_fields)
 ```
 
 ```{r}
 # | echo: true
 # | eval: false
-results_all_fields <- DESeq2::results(de_all_fields, alpha = 0.05)
+# results_all_fields <- DESeq2::results(de_all_fields, alpha = 0.05)
 ```
 
 Positive log fold change == up regulated in Vent, compared to Non-vent
@@ -331,33 +618,33 @@ Positive log fold change == up regulated in Vent, compared to Non-vent
 ```{r}
 # | echo: true
 # | eval: false
-plot_vent_v_nonvent <- data.frame(results_all_fields) %>% 
-  mutate(REGULATION = case_when(
-    log2FoldChange > 0 ~ "upregulated in vent",
-    log2FoldChange < 0 ~ "upregulated in non-vent"
-  ),
-  SIGNIFICANT = case_when(
-    pvalue <= 0.05 ~ "Significantly",
-    TRUE ~ "Not significantly"
-  )) %>% 
-  ggplot(aes(x = baseMean, y = log2FoldChange, color = SIGNIFICANT)) +
-  geom_point(stat = "identity") +
-  scale_x_log10() +
-  theme_classic() +
-  scale_color_manual(values = c("#878787", "#d73027")) +
-  labs(title = mcols(results_all_fields)$description[2])
-
-allfields_vent_v_nonvent_transcripts <- data.frame(results_all_fields) %>% 
-  mutate(REGULATION = case_when(
-    log2FoldChange > 0 ~ "upregulated in vent",
-    log2FoldChange < 0 ~ "upregulated in non-vent"
-  ),
-  SIGNIFICANT = case_when(
-    pvalue <= 0.05 ~ "Significantly",
-    TRUE ~ "Not significantly"
-  )) %>% 
-  # filter(SIGNIFICANT == "Significantly") %>% 
-  rownames_to_column(var = "SequenceID")
+# plot_vent_v_nonvent <- data.frame(results_all_fields) %>% 
+#   mutate(REGULATION = case_when(
+#     log2FoldChange > 0 ~ "upregulated in vent",
+#     log2FoldChange < 0 ~ "upregulated in non-vent"
+#   ),
+#   SIGNIFICANT = case_when(
+#     pvalue <= 0.05 ~ "Significantly",
+#     TRUE ~ "Not significantly"
+#   )) %>% 
+#   ggplot(aes(x = baseMean, y = log2FoldChange, color = SIGNIFICANT)) +
+#   geom_point(stat = "identity") +
+#   scale_x_log10() +
+#   theme_classic() +
+#   scale_color_manual(values = c("#878787", "#d73027")) +
+#   labs(title = mcols(results_all_fields)$description[2])
+# 
+# allfields_vent_v_nonvent_transcripts <- data.frame(results_all_fields) %>% 
+#   mutate(REGULATION = case_when(
+#     log2FoldChange > 0 ~ "upregulated in vent",
+#     log2FoldChange < 0 ~ "upregulated in non-vent"
+#   ),
+#   SIGNIFICANT = case_when(
+#     pvalue <= 0.05 ~ "Significantly",
+#     TRUE ~ "Not significantly"
+#   )) %>% 
+#   # filter(SIGNIFICANT == "Significantly") %>% 
+#   rownames_to_column(var = "SequenceID")
 ```
 
 Table output for documentation.
@@ -365,9 +652,9 @@ Table output for documentation.
 ```{r}
 # | echo: true
 # | eval: false
-allfields_vent_v_nonvent_transcripts %>% 
-  group_by(REGULATION, SIGNIFICANT) %>% 
-    summarise(Number_of_transcripts = n())
+# allfields_vent_v_nonvent_transcripts %>% 
+#   group_by(REGULATION, SIGNIFICANT) %>% 
+#     summarise(Number_of_transcripts = n())
 ```
 
 ## Plume vs. Background
@@ -377,45 +664,45 @@ Positive log fold change == up regulated in Plume, relative to Background deep s
 ```{r}
 # | echo: true
 # | eval: false
-glimpse(de_bsw_plume_annotall)
+# glimpse(de_bsw_plume_annotall)
 ```
 
 ```{r}
 # | echo: true
 # | eval: false
-results_bsw_plume <- DESeq2::results(de_bsw_plume_annotall, alpha = 0.05)
+# results_bsw_plume <- DESeq2::results(de_bsw_plume_annotall, alpha = 0.05)
 ```
 
 ```{r}
 # | echo: true
 # | eval: false
-plot_bsw_v_plume <- data.frame(results_bsw_plume) %>% 
-  mutate(REGULATION = case_when(
-    log2FoldChange > 0 ~ "upregulated in plume",
-    log2FoldChange < 0 ~ "upregulated in background"
-  ),
-  SIGNIFICANT = case_when(
-    pvalue <= 0.05 ~ "Significantly",
-    TRUE ~ "Not significantly"
-  )) %>% 
-  ggplot(aes(x = baseMean, y = log2FoldChange, color = SIGNIFICANT)) +
-  geom_point(stat = "identity") +
-  scale_x_log10() +
-  theme_classic() +
-  scale_color_manual(values = c("#878787", "#d73027")) +
-  labs(title = mcols(results_bsw_plume)$description[2])
-
-plume_bsw_transcripts <- data.frame(results_bsw_plume) %>% 
-  mutate(REGULATION = case_when(
-    log2FoldChange > 0 ~ "upregulated in plume",
-    log2FoldChange < 0 ~ "upregulated in background"
-  ),
-  SIGNIFICANT = case_when(
-    pvalue <= 0.05 ~ "Significantly",
-    TRUE ~ "Not significantly"
-  )) %>% 
-  # filter(SIGNIFICANT == "Significantly") %>% 
-  rownames_to_column(var = "SequenceID")
+# plot_bsw_v_plume <- data.frame(results_bsw_plume) %>% 
+#   mutate(REGULATION = case_when(
+#     log2FoldChange > 0 ~ "upregulated in plume",
+#     log2FoldChange < 0 ~ "upregulated in background"
+#   ),
+#   SIGNIFICANT = case_when(
+#     pvalue <= 0.05 ~ "Significantly",
+#     TRUE ~ "Not significantly"
+#   )) %>% 
+#   ggplot(aes(x = baseMean, y = log2FoldChange, color = SIGNIFICANT)) +
+#   geom_point(stat = "identity") +
+#   scale_x_log10() +
+#   theme_classic() +
+#   scale_color_manual(values = c("#878787", "#d73027")) +
+#   labs(title = mcols(results_bsw_plume)$description[2])
+# 
+# plume_bsw_transcripts <- data.frame(results_bsw_plume) %>% 
+#   mutate(REGULATION = case_when(
+#     log2FoldChange > 0 ~ "upregulated in plume",
+#     log2FoldChange < 0 ~ "upregulated in background"
+#   ),
+#   SIGNIFICANT = case_when(
+#     pvalue <= 0.05 ~ "Significantly",
+#     TRUE ~ "Not significantly"
+#   )) %>% 
+#   # filter(SIGNIFICANT == "Significantly") %>% 
+#   rownames_to_column(var = "SequenceID")
 ```
 
 Table output for documentation.
@@ -423,9 +710,9 @@ Table output for documentation.
 ```{r}
 # | echo: true
 # | eval: false
-plume_bsw_transcripts %>% 
-  group_by(REGULATION, SIGNIFICANT) %>% 
-    summarise(Number_of_transcripts = n())
+# plume_bsw_transcripts %>% 
+#   group_by(REGULATION, SIGNIFICANT) %>% 
+#     summarise(Number_of_transcripts = n())
 ```
 
 ## Compare number of unique transcripts with what is signigicant, etc.
@@ -481,30 +768,90 @@ for_tax <- long_df_annot %>%
 ## Bar plot of taxa
 
 ```{r}
-all_taxa_metat_order <- c("Alveolata-Ciliophora", "Alveolata-Dinoflagellata", "Other Alveolata", "Amoebozoa", "Apusozoa", "Archaeplastida","Excavata", "Hacrobia", "Rhizaria-Cercozoa",  "Rhizaria-Radiolaria","Rhizaria",  "Stramenopiles", "Stramenopiles-Ochrophyta","Stramenopiles-Opalozoa;Sagenista",  "Opisthokonta", "Other-metaT only", "Unknown Eukaryota")
+all_taxa_metat_order <- c("Alveolata-Ciliophora", "Alveolata-Dinoflagellata", "Other Alveolata", "Amoebozoa", "Apusozoa","Excavata", "Hacrobia","Archaeplastida",  "Rhizaria-Radiolaria","Rhizaria-Cercozoa","Rhizaria",  "Stramenopiles", "Stramenopiles-Opalozoa;Sagenista","Stramenopiles-Ochrophyta",  "Opisthokonta", "Other-metaT only", "Unknown Eukaryota")
 
-all_taxa_metat_color = c("#fa9fb5", "#c51b8a", "#1d91c0","#67000d", "#ef3b2c", "#ffffcc","#feb24c",  "#c7e9b4",  "#253494", "#9e9ac8","lightblue", "#238b45", "#54278f", "#bdbdbd", "#fee6ce", "#cb181d", "#636363","#000000")
+all_taxa_metat_color = c("#fa9fb5", "#c51b8a", "#67000d", "#ef3b2c", "#ffffcc", "#feb24c","#cc4c02", "#c7e9b4", "#238b45", "#c6dbef", "#00441b", "#99d8c9","#1d91c0",  "#9e9ac8", "#54278f", "#bdbdbd", "#252525", "#f0f0f0")
+
+# length(all_taxa_order)
+
 
 # as_is <- c("Amoebozoa", "Apusozoa", "Excavata", "Hacrobia", "Archaeplastida")
 ```
 
-```{r, fig.height=10, fig.width=12}
+```{r, fig.height=6, fig.width=10}
 for_tax %>% 
   mutate(SUPERGROUP_18S_ORDER = factor(SUPERGROUP_18S, levels = all_taxa_metat_order)) %>% 
   group_by(VENT_FIELD, VENT_BIN, LOCATION, SUPERGROUP_18S_ORDER) %>% 
-    summarise(MEAN = mean(scaledTPM)) %>% 
-  ggplot(aes(x = LOCATION, y = MEAN, fill = SUPERGROUP_18S_ORDER)) +
+    summarise(SUM = sum(scaledTPM)) %>% 
+  ggplot(aes(x = LOCATION, y = SUM, fill = SUPERGROUP_18S_ORDER)) +
   geom_bar(stat = "identity", position = "fill", color = "black") +
   scale_fill_manual(values = all_taxa_metat_color) +
     theme_linedraw() +
     theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
           strip.background = element_blank(),
-          strip.text = element_text(color = "black")) +
+          strip.text = element_text(color = "black"),
+          legend.title = element_blank()) +
   labs(x = "", y = "Relative abundance transcript count") +
   facet_grid(cols = vars(VENT_FIELD, VENT_BIN), scales = "free_x", space = "free")
 ```
 
-Try above after removing transcripts that appear in only 1 sample.
+## Tree plot for taxa
+
+```{r, fig.height=5, fig.width=9}
+for_tax %>% 
+  mutate(SUPERGROUP_18S_ORDER = factor(SUPERGROUP_18S, levels = all_taxa_metat_order)) %>% 
+  mutate(LOCATION_2 = case_when(
+    VENT_BIN == "Vent" ~ "Vent",
+    LOCATION == "Plume" ~ "Plume",
+    (LOCATION == "BSW" | LOCATION == "Background") ~ "Background"
+  )) %>% 
+  group_by(VENT_FIELD, LOCATION_2, SUPERGROUP_18S_ORDER) %>% 
+    summarise(SUM = sum(scaledTPM)) %>% 
+  ggplot(aes(x = LOCATION_2, area = SUM, fill = SUPERGROUP_18S_ORDER)) +
+  geom_treemap(color = "white", size = 2) +
+  scale_fill_manual(values = all_taxa_metat_color) +
+    theme_linedraw() +
+  theme(axis.text.x = element_blank(),
+        strip.background = element_blank(), strip.text = element_text(color = "black", face = "bold", vjust = 0.5, hjust = 0, size = 12),
+        legend.position = "right",
+        legend.title = element_blank(),
+        legend.text = element_text(color = "black", size = 12),
+        panel.border = element_blank(),
+        axis.title = element_text(face = "bold", size = 12)) +
+  labs(x = "", y = "Relative abundance transcript count") +
+  facet_grid(rows = vars(VENT_FIELD), cols = vars(LOCATION_2), scales = "free_x", space = "free")
+```
+Repeat, without individual vent sites.
+
+```{r, fig.height=4, fig.width=9}
+for_tax %>% 
+  mutate(SUPERGROUP_18S_ORDER = factor(SUPERGROUP_18S, levels = all_taxa_metat_order)) %>% 
+  mutate(LOCATION_2 = case_when(
+    VENT_BIN == "Vent" ~ "Vent",
+    LOCATION == "Plume" ~ "Plume",
+    (LOCATION == "BSW" | LOCATION == "Background") ~ "Background"
+  )) %>% 
+  group_by(LOCATION_2, SUPERGROUP_18S_ORDER) %>% 
+    summarise(SUM = sum(scaledTPM)) %>% 
+  ggplot(aes(x = LOCATION_2, area = SUM, fill = SUPERGROUP_18S_ORDER)) +
+  geom_treemap(color = "white", size = 2) +
+  scale_fill_manual(values = all_taxa_metat_color) +
+    theme_linedraw() +
+  theme(axis.text.x = element_blank(),
+        strip.background = element_blank(), strip.text = element_text(color = "black", face = "bold", vjust = 0.5, hjust = 0, size = 12),
+        legend.position = "right",
+        legend.title = element_blank(),
+        legend.text = element_text(color = "black", size = 12),
+        panel.border = element_blank(),
+        axis.title = element_text(face = "bold", size = 12),
+        plot.margin = margin(1,1,4,1, unit = "cm")) +
+  labs(x = "", y = "Relative abundance transcript count") +
+  facet_grid(cols = vars(LOCATION_2), scales = "free_x", space = "free")
+```
+
+
+
+## Heatmap taxonomic breakdown
 
 Repeat taxonomy breakdown, go to family level, etc.
 
@@ -513,7 +860,7 @@ taxa_keep <- c("Alveolata-Ciliophora", "Alveolata-Dinoflagellata", "Amoebozoa", 
 pink_qual <- c("#fff7f3", "#fcc5c0", "#fa9fb5","#f768a1","#dd3497", "#ae017e", "#7a0177", "black")
 ```
 
-```{r}
+```{r, fig.height=14, fig.width=12}
 for_tax %>% 
   filter(SUPERGROUP_18S %in% taxa_keep) %>% 
   mutate(SUPERGROUP_18S_ORDER = factor(SUPERGROUP_18S, levels = all_taxa_metat_order)) %>% 
@@ -533,12 +880,12 @@ for_tax %>%
         axis.text.x = element_text(color = "black", angle = 90, hjust = 1, vjust = 0))
 ```
 
-## Dendrogram by taxa
+# Dendrogram by taxa
 
 ```{r}
 for_tax_dendro <- long_df_annot %>% 
   filter(NUM_ZERO < 35) %>%
-  unite(SAMPLENAME, VENT_FIELD, VENT_BIN, LOCATION, SAMPLEID, sep = "_") %>% 
+  unite(SAMPLENAME, VENT_FIELD, VENT_BIN, LOCATION, sep = "_") %>% 
   group_by(full_classification, SAMPLENAME) %>% 
     summarise(SUM_bytax = sum(scaledTPM)) %>% 
   pivot_wider(names_from = SAMPLENAME, values_from = SUM_bytax, values_fill = 0) %>% 
@@ -551,18 +898,19 @@ Compute jaccard distances across all samples.
 dendro_jacc_tax <- vegan::vegdist(t(for_tax_dendro), method = "jaccard")
 cluster_jacc_tax <- hclust(dist(t(dendro_jacc_tax)), method = "average")
 
-# library(ggdendro)
+library(ggdendro)
 dendro_plot_tax <- ggdendro::dendro_data(as.dendrogram(cluster_jacc_tax), type = "rectangle")
 label_dendro_order_tax <- as.character(dendro_plot_tax$labels$label)
+
 ```
 
 ### Plot dendrogram by taxonomy
 
-```{r, fig.height=8, fig.width=8}
+```{r, fig.height=8, fig.width=4}
 # range(segment(dendro_plot_tax)$y)
 # (dendro_plot_tax$labels)
 # class(dendro_plot_tax)
-dendro_plot_tax <- ggplot(segment(dendro_plot_tax)) + 
+dendro_ggplot <- ggplot(data = segment(dendro_plot_tax)) +
   geom_segment(aes(x = x, y = y, xend = xend, yend = yend)) + 
   coord_flip(clip = "off") + 
   scale_y_reverse() + 
@@ -577,26 +925,76 @@ dendro_plot_tax <- ggplot(segment(dendro_plot_tax)) +
         axis.ticks.x = element_line(), 
         axis.title.x = element_text(color = "black", size = 14),
         plot.margin = unit(c(1,16,1,1), "lines")) 
-dendro_plot_tax
+dendro_ggplot
 # margin(t, r, l, b)
 ```
 
-# Functional breakdown
+```{r}
+label_dendro_order_tax <- as.character(dendro_plot_tax$labels$label)
+label_dendro_order_tax
+```
 
-## Preprocess
+## Dendrogram by Ciliates
+
 
 ```{r}
-kegg <- read.csv("../KEGG_DB/combined_kegg.csv")
-# dim(kegg)
-kegg <- kegg %>% select(KEGG = KO_number, everything(), -X)
-curated_kegg <- read.csv("../KEGG_DB/reformat-kegg-pfam-skh.csv")
-# head(curated_kegg)
-
-key_geneid <- kegg %>% 
-  distinct() %>% 
-  left_join(curated_kegg, multiple = "all", by = join_by(KEGG)) %>% 
-  select(starts_with("KeggOrthology_"), Category01, Category02, FullName, GeneID, Gene_identification, KEGG, PFAM, Descriptions, REF = REFs)
+for_ciliatevent_dendro <- long_df_annot %>% 
+  filter(VENT_BIN == "Vent") %>% 
+  filter(SUPERGROUP_18S == "Alveolata-Ciliophora") %>% 
+  # filter(NUM_ZERO < 35) %>%
+  unite(SAMPLENAME, VENT_FIELD, VENT_BIN, LOCATION, sep = "_") %>% 
+  group_by(full_classification, SAMPLENAME) %>% 
+    summarise(SUM_bytax = sum(scaledTPM)) %>% 
+  pivot_wider(names_from = SAMPLENAME, values_from = SUM_bytax, values_fill = 0) %>% 
+  column_to_rownames(var = "full_classification")
 ```
+
+Compute jaccard distances across all samples.
+
+```{r}
+dendro_jacc_ciliatevent <- vegan::vegdist(t(for_ciliatevent_dendro), method = "jaccard")
+cluster_jacc_ciliatevent <- hclust(dist(t(dendro_jacc_ciliatevent)), method = "average")
+
+library(ggdendro)
+dendro_plot_ciliatevent <- ggdendro::dendro_data(as.dendrogram(cluster_jacc_ciliatevent), type = "rectangle")
+
+label_dendro_order_ciliatevent <- as.character(dendro_plot_ciliatevent$labels$label)
+
+label_dendro_order_ciliatevent
+```
+
+### Plot dendrogram cilaites at vents
+
+```{r, fig.height=5, fig.width=5}
+# dendro_plot_ciliatevent
+dendro_ggplot_ciliate <- ggplot(data = segment(dendro_plot_ciliatevent)) +
+  geom_segment(aes(x = x, y = y, xend = xend, yend = yend)) + 
+  coord_flip(clip = "off") +
+  # coord_equal(clip = "off") +
+  scale_y_reverse() + 
+  geom_text(aes(x = x, y = y, 
+                label = label, 
+                angle = 0, hjust = 0), 
+            data = label(dendro_plot_ciliatevent)) + 
+  theme_dendro() + 
+  labs(x = "Dissimilarity", title = "") + 
+  theme(axis.text.x = element_text(color = "black", size = 14), 
+        axis.line.x = element_line(color = "#252525"), 
+        axis.ticks.x = element_line(), 
+        axis.title.x = element_text(color = "black", size = 14),
+        plot.margin = unit(c(1,16,1,1), "lines")) 
+dendro_ggplot_ciliate
+# margin(t, r, l, b)
+
+```
+```{r}
+tmp <- as.data.frame(dendro_plot_ciliatevent$labels)
+label_ciliatevent <- as.character(tmp$label)
+label_ciliatevent
+```
+
+
+## Preprocess
 
 ```{r}
 long_df_fxn_mod <- long_df_annot %>% 
@@ -612,7 +1010,7 @@ long_df_fxn_mod <- long_df_annot %>%
 By KEGG, level A.
 
 ```{r}
-long_df_fxn_mod %>% 
+long_df_fxn_mod %>%   
   select(LOCATION, VENT_FIELD, VENT_BIN, scaledTPM, KEGG, KeggOrthology_A) %>% 
   distinct() %>% 
   group_by(LOCATION, VENT_FIELD, VENT_BIN, KeggOrthology_A) %>% 
@@ -682,8 +1080,101 @@ long_df_fxn_mod %>%
   labs(x = "", y = "Relative abundance transcript count") +
   facet_grid(cols = vars(VENT_FIELD, VENT_BIN), scales = "free_x", space = "free")
 ```
+## Kegg breakdown as heatmap
 
-## Dendrogram by function
+```{r}
+glimpse(long_df_fxn_mod)
+```
+
+
+```{r, fig.height=10, fig.width=7}
+# head(key_geneid)
+yl_red <- c("#ffffcc", "#fed976", "#feb24c", "#fc4e2a", "#e31a1c", "#b10026")
+reds <- c("#f7f7f7","#fee5d9", "#fcae91", "#fb6a4a", "#a50f15")
+long_df_fxn_mod %>% 
+  filter(!is.na(KeggOrthology_A)) %>% 
+  group_by(KeggOrthology_A, KeggOrthology_B, VENT_FIELD, VENT_BIN) %>% 
+  summarise(TRANSCRIPT_COUNT = n(),
+            sum_TPM = sum(scaledTPM)) %>% 
+  ggplot(aes(x = VENT_FIELD, y = KeggOrthology_B, fill = sum_TPM)) +
+    geom_tile() +
+  scale_fill_stepsn(
+      # limits = c(-5,5),
+      # breaks = c(0.0, 3.5, 7.0, 10.5),
+      show.limits = TRUE,
+      # colors = reds) +
+      colors = yl_red) +
+  facet_grid(rows = vars(KeggOrthology_A), cols = vars(VENT_BIN),
+             space = "free", scales = "free") +
+    theme_linedraw() +
+    theme(axis.text = element_text(color = "black"),
+          legend.position = "bottom",
+          legend.title = element_blank(),
+          strip.text.y = element_text(angle = 0, hjust = 0, vjust = 0.5))
+```
+
+```{r}
+# unique(long_df_fxn_mod$KeggOrthology_B)
+glimpse(long_df_fxn_mod)
+```
+
+```{r}
+long_df_fxn_mod %>% 
+  filter(!is.na(KeggOrthology_A)) %>% 
+  filter(KeggOrthology_B == "Carbohydrate metabolism") %>% 
+  filter(!is.na(Gene_identification)) %>%
+  group_by(KeggOrthology_C, KeggOrthology_B, VENT_FIELD, VENT_BIN) %>% 
+  summarise(TRANSCRIPT_COUNT = n(),
+            sum_TPM = sum(scaledTPM)) %>% 
+  ggplot(aes(x = VENT_FIELD, y = KeggOrthology_C, fill = sum_TPM)) +
+    geom_tile() +
+  scale_fill_stepsn(
+      # limits = c(-5,5),
+      # breaks = c(0.0, 3.5, 7.0, 10.5),
+      show.limits = TRUE,
+      # colors = reds) +
+      colors = yl_red) +
+  facet_grid(cols = vars(VENT_BIN),
+             space = "free", scales = "free") +
+    theme_linedraw() +
+    theme(axis.text = element_text(color = "black"),
+          legend.position = "bottom",
+          legend.title = element_blank(),
+          strip.text.y = element_text(angle = 0, hjust = 0, vjust = 0.5))
+```
+
+
+```{r, fig.height=20, fig.width=15}
+# head(key_geneid)
+yl_red <- c("#ffffcc", "#fed976", "#feb24c", "#fc4e2a", "#e31a1c", "#b10026")
+reds <- c("#f7f7f7","#fee5d9", "#fcae91", "#fb6a4a", "#a50f15")
+long_df_fxn_mod %>% 
+  filter(!is.na(KeggOrthology_A)) %>% 
+  filter(KeggOrthology_B == "Carbohydrate metabolism") %>% 
+  filter(!is.na(Gene_identification)) %>% 
+  group_by(KeggOrthology_C, KeggOrthology_B, Gene_identification, VENT_FIELD, VENT_BIN) %>% 
+  summarise(TRANSCRIPT_COUNT = n(),
+            sum_TPM = sum(scaledTPM)) %>% 
+  ggplot(aes(x = VENT_FIELD, y = Gene_identification, fill = sum_TPM)) +
+    geom_tile() +
+  scale_fill_stepsn(
+      # limits = c(-5,5),
+      # breaks = c(0.0, 3.5, 7.0, 10.5),
+      show.limits = TRUE,
+      # colors = reds) +
+      colors = yl_red) +
+  facet_grid(cols = vars(VENT_BIN), rows = vars(KeggOrthology_C),
+             space = "free", scales = "free") +
+    theme_linedraw() +
+    theme(axis.text = element_text(color = "black"),
+          legend.position = "bottom",
+          legend.title = element_blank(),
+          strip.text.y = element_text(angle = 0, hjust = 0, vjust = 0.5))
+```
+
+
+
+# Dendrogram by function
 
 First by KEGG orthology IDs.
 
@@ -719,7 +1210,7 @@ For KEGG ID
 library(ggdendro)
 dendro_jacc_kegg <- vegan::vegdist(t(for_kegg_dendro), method = "jaccard")
 cluster_jacc_kegg <- hclust(dist(t(dendro_jacc_kegg)), method = "average")
-
+# ?hclust()
 dendro_plot_kegg <- ggdendro::dendro_data(as.dendrogram(cluster_jacc_kegg), type = "rectangle")
 label_dendro_order_kegg <- as.character(dendro_plot_kegg$labels$label)
 ```
@@ -731,6 +1222,7 @@ label_dendro_order_kegg <- as.character(dendro_plot_kegg$labels$label)
 dendro_plot_fxn <- ggplot(segment(dendro_plot_kegg)) + 
   geom_segment(aes(x = x, y = y, xend = xend, yend = yend)) + 
   coord_flip(clip = "off") + 
+  # geom_point(shape = 21, aes(x, y, fill = label(dendro_plot_kegg))) +
   scale_y_reverse() + 
   geom_text(aes(x = x, y = y, label = label, angle = 0, hjust = 0), data = label(dendro_plot_kegg)) + 
   theme_dendro() + 
@@ -822,19 +1314,19 @@ Take formatted dataframe and run through kmeans clustering protocol. See script 
 ```{r}
 # | echo: true
 # | eval: false
-library(broom)
-library(tidyverse)
-# load("output/kmeans-data-obj.RData", verbose = TRUE)
-load("/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/kmeans-data-obj.RData", verbose = TRUE)
-# str(kmeans_input_mcr_gr)
-kclusts <-
-  tibble(k = 3:25) %>%
-  mutate(
-    kclust = map(k, ~ kmeans(df_output, .x)),
-    glanced = map(kclust, glance))
-
-output_kclusts <- kclusts %>%
-  unnest(cols = c(glanced))
+# library(broom)
+# library(tidyverse)
+# # load("output/kmeans-data-obj.RData", verbose = TRUE)
+# load("/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/kmeans-data-obj.RData", verbose = TRUE)
+# # str(kmeans_input_mcr_gr)
+# kclusts <-
+#   tibble(k = 3:25) %>%
+#   mutate(
+#     kclust = map(k, ~ kmeans(df_output, .x)),
+#     glanced = map(kclust, glance))
+# 
+# output_kclusts <- kclusts %>%
+#   unnest(cols = c(glanced))
 
 # write_delim(output_kclusts, file = "output/output_kclusts.txt")
 # output_kclusts <- read.delim("output_kclusts.txt", sep = " ")
@@ -842,11 +1334,11 @@ output_kclusts <- kclusts %>%
 ```
 
 ```{r}
-output_kclusts %>% 
-  ggplot(aes(x = k, y = tot.withinss)) +
-    geom_line(alpha = 0.5, linewidth = 1.2, color = "darkgreen") +
-    geom_point(size = 2, color = "darkgreen") +
-  theme_linedraw() +
+# output_kclusts %>% 
+#   ggplot(aes(x = k, y = tot.withinss)) +
+#     geom_line(alpha = 0.5, linewidth = 1.2, color = "darkgreen") +
+#     geom_point(size = 2, color = "darkgreen") +
+#   theme_linedraw() +
 ```
 
 ### Perform k-means clustering
@@ -859,32 +1351,33 @@ See script `run-kmeans02.R`.
 
 # library(broom)
 
-frenemies_26_clust <- kmeans(df_output, centers = 26)
-
-summary(frenemies_26_clust)
-
-broom::tidy(frenemies_26_clust)
-
-augment_frenemies <- augment(frenemies_26_clust, df_output)
-df_kmeans_frenemies <- (data.frame(augment_frenemies))
-
-save(df_kmeans_frenemies, file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/kmeansoutput-frenemies-metaT.RData")
+# frenemies_26_clust <- kmeans(df_output, centers = 26)
+# 
+# summary(frenemies_26_clust)
+# 
+# broom::tidy(frenemies_26_clust)
+# 
+# augment_frenemies <- augment(frenemies_26_clust, df_output)
+# df_kmeans_frenemies <- (data.frame(augment_frenemies))
+# 
+# save(df_kmeans_frenemies, file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/kmeansoutput-frenemies-metaT.RData")
 ```
 
 
-
+### Local
 ```{r}
 load("input-docs/kmeansoutput-frenemies-metaT.RData", verbose = TRUE)
 load("input-docs/gr_vd_longdf.RData", verbose = TRUE)
 ```
 
-```{r}
-# glimpse(df_kmeans_frenemies)
-long_df_annot_cluster <- long_df_annot %>% 
-  left_join(select(df_kmeans_frenemies, SequenceID = `.rownames`, CLUSTER = `.cluster`))
 
-glimpse(long_df_annot_cluster)
+
+```{r}
+long_df_annot_cluster <- long_df_annot %>%
+  left_join(select(df_kmeans_frenemies, SequenceID = `.rownames`, CLUSTER = `.cluster`))
 ```
+
+
 ### Analyze k-means output
 
 
@@ -895,14 +1388,14 @@ all_taxa_metat_order <- c("Alveolata-Ciliophora", "Alveolata-Dinoflagellata", "O
 all_taxa_metat_color = c("#fa9fb5", "#c51b8a", "#1d91c0","#67000d", "#ef3b2c", "#ffffcc","#feb24c",  "#c7e9b4",  "#253494", "#9e9ac8","lightblue", "#238b45", "#54278f", "#bdbdbd", "#fee6ce", "#cb181d", "#636363","#000000")
 
 long_df_annot_cluster %>% 
-  group_by(SUPERGROUP_18S, VENT_BIN, CLUSTER) %>% 
+  group_by(SUPERGROUP_18S, CLUSTER) %>% 
   summarise(SUM_TPM = sum(scaledTPM),
             COUNT = n()) %>% 
   mutate(SUPERGROUP_ORDER = factor(SUPERGROUP_18S, level = all_taxa_metat_order)) %>% 
   ggplot(aes(x = CLUSTER, y = SUM_TPM)) +
-    geom_bar(stat = "identity", color = "black", aes(fill = SUPERGROUP_18S, alpha = VENT_BIN)) +
+    geom_bar(stat = "identity", color = "black", aes(fill = SUPERGROUP_18S)) +
     scale_fill_manual(values = all_taxa_metat_color) +
-    scale_alpha_manual(values = c(0.5, 1)) +
+    # scale_alpha_manual(values = c(0.5, 1)) +
     theme_linedraw() +
     theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
           strip.background = element_blank(),
@@ -943,10 +1436,115 @@ long_df_annot_cluster %>%
     # scale_fill_manual(values = all_taxa_metat_color) +
     scale_alpha_manual(values = c(0.5, 1)) +
     theme_linedraw() +
+  facet_grid(rows = vars(VENT_BIN)) +
     theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
           strip.background = element_blank(),
           strip.text = element_text(color = "black")) +
   labs(x = "", y = "Transcripts associated with each cluster")
+```
+
+### Functional classification for each cluster
+
+```{r}
+glimpse(long_df_annot_cluster)
+# colnames(long_df_annot_cluster)
+# glimpse(key_geneid)
+```
+
+
+```{r, fig.height=8, fig.width=9}
+long_df_annot_cluster %>% 
+  group_by(VENT_FIELD, VENT_BIN, CLUSTER, KEGG_ko) %>% 
+  summarize(SUM_TPM = sum(scaledTPM)) %>% 
+  separate_longer_delim(KEGG_ko, delim = ",") %>% 
+  mutate(KEGG = str_remove_all(KEGG_ko, "ko:")) %>%
+  left_join(key_geneid, by = "KEGG") %>% 
+  group_by(VENT_FIELD, VENT_BIN, CLUSTER, Category01) %>% 
+  summarize(COUNT = n(),
+            SUM = sum(SUM_TPM)) %>% 
+  ggplot(aes(x = CLUSTER, y = SUM, fill = Category01)) +
+  geom_bar(stat = "identity") +
+  facet_grid(rows = vars(VENT_FIELD), cols = vars(VENT_BIN), 
+             scales = "free", space = "free") +
+  theme_linedraw() +
+  theme(legend.position = "bottom",
+        # axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
+          strip.background = element_blank(),
+          strip.text = element_text(color = "black"))
+```
+```{r, fig.height=8, fig.width=9}
+long_df_annot_cluster %>% 
+  group_by(VENT_FIELD, VENT_BIN, CLUSTER, SUPERGROUP_18S, KEGG_ko) %>% 
+  summarize(SUM_TPM = sum(scaledTPM)) %>% 
+  separate_longer_delim(KEGG_ko, delim = ",") %>% 
+  mutate(KEGG = str_remove_all(KEGG_ko, "ko:")) %>%
+  left_join(key_geneid, by = "KEGG") %>% 
+  group_by(VENT_FIELD, VENT_BIN, CLUSTER, SUPERGROUP_18S) %>% 
+  summarize(COUNT = n(),
+            SUM = sum(SUM_TPM)) %>% 
+  ggplot(aes(x = CLUSTER, y = SUM, fill = SUPERGROUP_18S)) +
+  geom_bar(stat = "identity") +
+  facet_grid(rows = vars(VENT_FIELD), cols = vars(VENT_BIN), 
+             scales = "free", space = "free") +
+  theme_linedraw() +
+  theme(legend.position = "bottom",
+        # axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
+          strip.background = element_blank(),
+          strip.text = element_text(color = "black"))
+```
+
+```{r}
+# hist(tmp$SUM_TPM_byfxn)
+# ?sample_n()
+gene_level_top10perc <- long_df_annot_cluster %>% 
+  slice_max(order_by = scaledTPM, by = c(CLUSTER), prop = 0.1, with_ties = TRUE) %>% 
+  group_by(VENT_FIELD, VENT_BIN, CLUSTER, KEGG_ko) %>% 
+  summarize(SUM_TPM = sum(scaledTPM)) %>% 
+  separate_longer_delim(KEGG_ko, delim = ",") %>% 
+  mutate(KEGG = str_remove_all(KEGG_ko, "ko:")) %>%
+  left_join(key_geneid, by = "KEGG")
+  
+# length(unique(tmp$GeneID))
+
+# dim(long_df_annot_cluster)  
+# dim(tmp)
+head(key_geneid)
+```
+```{r, fig.height=30, fig.width=6}
+# gene_level_top10perc %>% 
+#   filter(KeggOrthology_B == "Carbohydrate metabolism") %>% 
+#   ggplot(aes(x = CLUSTER, y = Gene_identification, fill = log(SUM_TPM))) +
+#   geom_tile() +
+#   facet_grid(cols = vars(VENT_BIN, VENT_FIELD), rows = vars(KeggOrthology_B)) +
+#   theme(axis.text.y = element_blank())
+```
+
+
+
+```{r, fig.height=30, fig.width=25}
+long_df_annot_cluster %>% 
+  # slice_max(order_by = scaledTPM, by = c(CLUSTER), prop = 0.1, with_ties = TRUE) %>% 
+  group_by(VENT_FIELD, VENT_BIN, CLUSTER, KEGG_ko) %>% 
+  summarize(SUM_TPM = sum(scaledTPM)) %>% 
+  separate_longer_delim(KEGG_ko, delim = ",") %>% 
+  mutate(KEGG = str_remove_all(KEGG_ko, "ko:")) %>%
+  left_join(key_geneid, by = "KEGG") %>% 
+  filter(Category01 == "Phagotrophy") %>% 
+  ggplot(aes(x = CLUSTER, y = Gene_identification, fill = log(SUM_TPM))) +
+   geom_tile(stat = "identity", linewidth = 0.1, color = "black") +
+      scale_fill_stepsn(
+      # limits = c(-10,10),
+      na.value = NA,
+      show.limits = TRUE,
+      colors = pink_qual) +
+    facet_grid(rows = vars(Category02),
+               space = "free", scales = "free") +
+    theme(axis.text.y = element_text(color = "black"),
+          strip.text.y = element_text(angle = 0))
+  
+  
+  
+  
 ```
 
 # PCA-ordination
@@ -961,16 +1559,37 @@ load("input-docs/gr_vd_longdf.RData", verbose = TRUE)
 Convert to wide format, but first determine what the minimum TPM value is and use as a zero in the upcoming PCA.
 
 ```{r}
+# MIN_VAL <- min(long_df_annot$scaledTPM)
+# head(long_df_annot)
+# Reformat dataframe:
+df_wide_pre_pca_byTax <- long_df_annot %>% 
+  unite(TAX_SITE, VENT_FIELD, VENT_BIN, LOCATION, SUPERGROUP_18S, sep = "_") %>% 
+  # filter(NUM_ZERO < 35) %>% 
+  # unite(SAMPLE, VENT_FIELD, LOCATION, VENT_BIN, sep = "_") %>% 
+  group_by(SequenceID, TAX_SITE) %>% 
+     summarise(MEAN_TPM = mean(scaledTPM),
+              log_TPM = log(MEAN_TPM), .groups = "rowwise") %>%
+  select(-MEAN_TPM) %>% 
+  pivot_wider(names_from = TAX_SITE, values_from = log_TPM, values_fill = 0) %>% 
+  column_to_rownames(var = "SequenceID")
+# head(df_wide_pre_pca_byTax)
+```
+
+
+
+
+```{r}
 MIN_VAL <- min(long_df$scaledTPM)
 
 # Reformat dataframe:
 df_wide_pre_pca_GR <- long_df %>% 
-  # filter(VENT_BIN == "Vent") %>% 
-  # filter(VENT_FIELD == "Gorda Ridge") %>% 
+  filter(VENT_BIN == "Vent") %>%
+  filter(VENT_FIELD == "Gorda Ridge") %>%
   filter(NUM_ZERO < 35) %>% 
   unite(SAMPLE, VENT_FIELD, LOCATION, VENT_BIN, sep = "_") %>% 
   group_by(SequenceID, SAMPLE) %>% 
-    summarise(MEAN_TPM = mean(scaledTPM)) %>% 
+     summarise(MEAN_TPM = mean(scaledTPM),
+              log_TPM = log(MEAN_TPM)) %>% 
   pivot_wider(names_from = SAMPLE, values_from = MEAN_TPM, values_fill = MIN_VAL) %>% 
   column_to_rownames(var = "SequenceID")
 
@@ -980,23 +1599,34 @@ df_wide_pre_pca_MCR <- long_df %>%
   filter(NUM_ZERO < 35) %>% 
   unite(SAMPLE, VENT_FIELD, LOCATION, VENT_BIN, sep = "_") %>% 
   group_by(SequenceID, SAMPLE) %>% 
-    summarise(MEAN_TPM = mean(scaledTPM)) %>% 
+    summarise(MEAN_TPM = mean(scaledTPM),
+              log_TPM = log(MEAN_TPM)) %>% 
   pivot_wider(names_from = SAMPLE, values_from = MEAN_TPM, values_fill = MIN_VAL) %>% 
   column_to_rownames(var = "SequenceID")
 ```
 
 ```{r}
 library(compositions)
+# ?prcomp()
+# pca_bytax <- prcomp(data.frame(compositions::clr(t(df_wide_pre_pca_byTax))))
+pca_bytax <- prcomp(data.frame(t(df_wide_pre_pca_byTax))), scale = TRUE)
 
 pca_gr <- prcomp(data.frame(compositions::clr(t(df_wide_pre_pca_GR))))
 
 pca_mcr <- prcomp(data.frame(compositions::clr(t(df_wide_pre_pca_MCR))))
 
 # Determine variance
+variance_bytax <- (pca_bytax$sdev^2)/sum(pca_bytax$sdev^2)
+
 variance_gr <- (pca_gr$sdev^2)/sum(pca_gr$sdev^2)
 
 variance_mcr <- (pca_mcr$sdev^2)/sum(pca_mcr$sdev^2)
 ```
+
+```{r}
+barplot(variance_bytax, main = "By Taxa & Site: Log-Ratio PCA Screeplot", xlab = "PC Axis", ylab = "% Variance", cex.names = 1.5, cex.axis = 1.5, cex.lab = 1.5, cex.main = 1.5)
+```
+
 
 ```{r}
 barplot(variance_gr, main = "GR: Log-Ratio PCA Screeplot", xlab = "PC Axis", ylab = "% Variance", cex.names = 1.5, cex.axis = 1.5, cex.lab = 1.5, cex.main = 1.5)
@@ -1006,6 +1636,35 @@ scree plot shows first two axes are OK for PCA analysis moving forward. CLR tran
 
 ```{r}
 barplot(variance_mcr, main = "MCR: Log-Ratio PCA Screeplot", xlab = "PC Axis", ylab = "% Variance", cex.names = 1.5, cex.axis = 1.5, cex.lab = 1.5, cex.main = 1.5)
+```
+
+### PCA by taxa and site
+
+```{r}
+pc1 <- round(variance_bytax[1] * 100, 2)
+pc2 <- round(variance_bytax[2] * 100, 2)
+
+# create data frame
+pca_bytax_df <- data.frame((pca_bytax$x), row.names(pca_bytax$x))
+# glimpse(pca_bytax_df)
+pca_bytax_df %>% 
+  rownames_to_column(var = "SAMPLE") %>% 
+  separate(SAMPLE, c("VENT_FIELD", "VENT_BIN", "LOCATION", "TAXA"), sep = "_", remove = FALSE) %>% 
+  ggplot(aes(x = PC1, y = PC2)) +
+    # geom_jitter(stroke = 1, size = 4, aes(shape = REGION_ORDER, fill = DEPTH_CATEGORY, color = LIGHT)) +
+    geom_jitter(stroke = 1, size = 4, aes(shape = VENT_FIELD, fill = TAXA), color = "black") +
+    # scale_shape_manual(values = shape_sample_order_month) +
+    scale_shape_manual(values = c(24, 25, 23, 22, 21)) +
+    # scale_fill_manual(values = c("#6a51a3", "#f768a1", "#8c96c6", "#fd8d3c", "#238b45")) +
+    # scale_fill_manual(values = color_sample_order_month) +
+    # scale_color_manual(values = c("#cccccc", "#252525")) +
+    theme_linedraw() + coord_fixed(ratio = 1) +
+    guides(fill = guide_legend(override.aes = list(shape = c(22)))) +
+    geom_hline(yintercept = 0) + geom_vline(xintercept = 0) +
+    theme(legend.title = element_blank(),
+          axis.text = element_text(color = "black", face = "bold", size = 13),
+          plot.margin = margin(3,3,3,3, unit = "cm")) +
+    labs(x =  paste(pc1, "%"), y = paste(pc2, "%"))
 ```
 
 ### PCA Gorda Ridge
@@ -1064,10 +1723,1344 @@ pca_mcr_df %>%
     labs(x =  paste(pc1, "%"), y = paste(pc2, "%"))
 ```
 
-\`\`\`{r}
 
-# x-y plot: Number of unique taxa, number of unique KEGG IDs?
+### PCA by phaotrophy-only
 
-Plot these to look at how the number of unique taxa vs. unique KEGG IDs changes for each vent field
+```{r}
+tmp_hets <- long_df_annot %>% 
+  separate_longer_delim(KEGG_ko, delim = ",") %>% 
+  mutate(KEGG = str_remove_all(KEGG_ko, "ko:")) %>%
+  left_join(key_geneid, by = "KEGG") %>% 
+  filter(Category01 == "Phagotrophy") %>% 
+  filter(VENT_BIN == "Vent")
 
+MIN_VAL_HETS <- min(tmp_hets$scaledTPM)
+```
+
+Convert to wide format, but first determine what the minimum TPM value is and use as a zero in the upcoming PCA.
+
+```{r}
+# Reformat dataframe:
+df_wide_pre_pca_Hets <- tmp_hets %>% 
+  unite(SAMPLE, VENT_FIELD, LOCATION, VENT_BIN, sep = "_") %>% 
+  group_by(SequenceID, SAMPLE) %>% 
+    summarise(MEAN_TPM = mean(scaledTPM)) %>% 
+  pivot_wider(names_from = SAMPLE, values_from = MEAN_TPM, values_fill = MIN_VAL_HETS) %>% 
+  column_to_rownames(var = "SequenceID")
+```
+
+```{r}
+library(compositions)
+?clr()
+pca_hets <- prcomp(data.frame(compositions::ilr(t(df_wide_pre_pca_Hets))))
+
+# Determine variance
+variance_hets <- (pca_hets$sdev^2)/sum(pca_hets$sdev^2)
+```
+
+```{r}
+barplot(variance_hets, main = "Phagotrophy: Log-Ratio PCA Screeplot", xlab = "PC Axis", ylab = "% Variance", cex.names = 1.5, cex.axis = 1.5, cex.lab = 1.5, cex.main = 1.5)
+```
+
+scree plot shows first two axes are OK for PCA analysis moving forward. CLR transformed.
+
+
+```{r}
+pc1 <- round(variance_hets[1] * 100, 2)
+pc2 <- round(variance_hets[2] * 100, 2)
+
+# create data frame
+pca_hets_df <- data.frame((pca_hets$x), row.names(pca_hets$x))
+
+pca_hets_df %>% 
+  rownames_to_column(var = "SAMPLE") %>% 
+  separate(SAMPLE, c("VENT_FIELD", "LOCATION", "VENT_BIN"), sep = "_", remove = FALSE) %>% 
+  ggplot(aes(x = PC1, y = PC2)) +
+    # geom_jitter(stroke = 1, size = 4, aes(shape = REGION_ORDER, fill = DEPTH_CATEGORY, color = LIGHT)) +
+    geom_jitter(stroke = 1, size = 4, aes(shape = VENT_FIELD, fill = VENT_BIN), color = "black") +
+    # scale_shape_manual(values = shape_sample_order_month) +
+    scale_shape_manual(values = c(24, 25, 23, 22, 21)) +
+    # scale_fill_manual(values = c("#6a51a3", "#f768a1", "#8c96c6", "#fd8d3c", "#238b45")) +
+    # scale_fill_manual(values = color_sample_order_month) +
+    # scale_color_manual(values = c("#cccccc", "#252525")) +
+    theme_linedraw() + coord_fixed(ratio = 1) +
+    guides(fill = guide_legend(override.aes = list(shape = c(22)))) +
+    geom_hline(yintercept = 0) + geom_vline(xintercept = 0) +
+    theme(legend.title = element_blank(),
+          axis.text = element_text(color = "black", face = "bold", size = 13)) +
+    labs(x =  paste(pc1, "%"), y = paste(pc2, "%"))
+```
+
+# Functional & taxonomic classification
+
+Use dataframe from above that incorporated clusters from k-means clustering.
+```{r}
+head(long_df_annot_cluster)
+hist(log(long_df_annot_cluster$scaledTPM))
+```
+
+```{r}
+head(long_df_annot)
+head(key_geneid)
+pink_qual <- c("#fff7f3", "#fcc5c0", "#fa9fb5","#f768a1","#dd3497", "#ae017e", "#7a0177", "black")
+rm_list <- c("por", "PDH")
+```
+
+
+### By vent site
+
+```{r}
+all_taxa_metat_order <- c("Alveolata-Ciliophora", "Alveolata-Dinoflagellata", "Other Alveolata", "Amoebozoa", "Apusozoa","Excavata", "Hacrobia","Archaeplastida",  "Rhizaria-Radiolaria","Rhizaria-Cercozoa","Rhizaria",  "Stramenopiles", "Stramenopiles-Opalozoa;Sagenista","Stramenopiles-Ochrophyta",  "Opisthokonta", "Other-metaT only", "Unknown Eukaryota")
+
+all_taxa_metat_color = c("#fa9fb5", "#c51b8a", "#67000d", "#ef3b2c", "#ffffcc", "#feb24c","#cc4c02", "#c7e9b4", "#238b45", "#c6dbef", "#00441b", "#99d8c9","#1d91c0",  "#9e9ac8", "#54278f", "#bdbdbd", "#252525", "#f0f0f0")
+
+names(all_taxa_metat_color) <-all_taxa_metat_order
+```
+
+
+```{r, fig.height=4, fig.width=14}
+# head(long_df_annot)
+long_df_annot %>% 
+  filter(VENT_BIN == "Vent") %>% # select only vent sites
+  filter(scaledTPM > 0) %>% 
+  group_by(SUPERGROUP_18S, VENT_FIELD, LOCATION) %>% 
+    summarise(SUM_TPM = sum(scaledTPM),
+              COUNT_TRANSCRIPT = n()) %>% 
+  mutate(TAXA_ORDER = factor(SUPERGROUP_18S, levels = all_taxa_metat_order)) %>% 
+  ggplot(aes(x = LOCATION, fill = TAXA_ORDER, y = SUM_TPM)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  # geom_point(shape = 21, color = "black", aes(size = (SUM_TPM))) +
+    facet_grid(cols = vars(VENT_FIELD), scales = "free", space = "free") +
+  scale_fill_manual(values = all_taxa_metat_color) +
+  theme_linedraw()
+```
+
+
+
+
+
+
+### Heat map - whole community profile
+
+```{r}
+label_dendro_order_tax   
+```
+
+```{r}
+unique(key_geneid$KeggOrthology_B)
+tmp0 <- key_geneid %>% filter(KeggOrthology_B == "Metabolism of other amino acids")
+unique(tmp0$KeggOrthology_C)
+rm_B <- c("Overview", "Xenobiotics biodegradation and metabolism")
+keep_B <- c("Amino Acid metabolism", "Carbohydrate metabolism", "Lipid metabolism")
+```
+
+```{r, fig.height=8, fig.width=10}
+heat_map_KEGGB <- long_df_annot_cluster %>% 
+  filter(!is.na(KEGG_ko)) %>% 
+  # Select top 25, keep ties to other samples
+  # slice_max(order_by = scaledTPM, by = c(LOCATION, VENT_FIELD, VENT_BIN), n = 25, with_ties = TRUE) %>% 
+  # Join with KEGG ID information
+  separate_longer_delim(KEGG_ko, delim = ",") %>% 
+  mutate(KEGG = str_remove_all(KEGG_ko, "ko:")) %>%
+  left_join(key_geneid, by = "KEGG") %>% 
+  filter(!is.na(KeggOrthology_B)) %>% 
+  # Create sample name for x axis
+  unite(SAMPLE_NAME, VENT_FIELD, VENT_FIELD, VENT_BIN, LOCATION, sep = "_") %>% 
+  mutate(SAMPLE_NAME_ORDER = factor(SAMPLE_NAME, levels = label_dendro_order_tax)) %>% 
+  # Get total
+  group_by(SAMPLE_NAME_ORDER, KeggOrthology_A, KeggOrthology_B) %>% 
+    summarise(SUM_TPM = sum(scaledTPM),
+              # TPM_RELABUN = (SUM_TPM/TOTAL_TPM_BYSAMPLE),
+              logSUM_TPM = log(SUM_TPM)) %>% 
+  ggplot(aes(x = SAMPLE_NAME_ORDER, y = KeggOrthology_B, fill = logSUM_TPM)) +
+  geom_tile(stat = "identity", linewidth = 0.3, color = "black") +
+      scale_fill_stepsn(
+      na.value = NA,
+      show.limits = TRUE,
+      colors = pink_qual) +
+  facet_grid(rows = vars(KeggOrthology_A),
+             scales = "free", space = "free",
+             labeller = label_wrap_gen(width = 14)) +
+  theme_classic() +
+  theme(axis.text = element_text(color = "black", size = 10, face = "bold"),
+        legend.title = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, size = 4, face = "bold"),
+        axis.title = element_blank(),
+        strip.background = element_blank(),
+        strip.text.y = element_text(angle = 0, face = "bold", hjust = 0, vjust = 0.5))
+heat_map_KEGGB
+```
+
+```{r}
+head(long_df_annot_cluster)
+green_blue <- c("#fff7fb","#ece2f0","#a6bddb","#67a9cf","#02818a","#016c59","#014636", "#004529")
+```
+
+
+```{r, fig.height=8, fig.width=10}
+heat_map_tax <- long_df_annot_cluster %>% 
+  # Create sample name for x axis
+  unite(SAMPLE_NAME, VENT_FIELD, VENT_FIELD, VENT_BIN, LOCATION, sep = "_") %>% 
+  mutate(SAMPLE_NAME_ORDER = factor(SAMPLE_NAME, levels = label_dendro_order_tax)) %>% 
+  # Get total
+  group_by(SAMPLE_NAME_ORDER, SUPERGROUP_18S) %>% 
+    summarise(SUM_TPM = sum(scaledTPM),
+              # TPM_RELABUN = (SUM_TPM/TOTAL_TPM_BYSAMPLE),
+              logSUM_TPM = log(SUM_TPM)) %>% 
+  ggplot(aes(x = SAMPLE_NAME_ORDER, y = SUPERGROUP_18S, fill = logSUM_TPM)) +
+  geom_tile(stat = "identity", linewidth = 0.3, color = "black") +
+      scale_fill_stepsn(
+      na.value = NA,
+      show.limits = TRUE,
+      colors = green_blue) +
+  theme_classic() +
+  theme(axis.text = element_text(color = "black", size = 10, face = "bold"),
+        legend.title = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, size = 4, face = "bold"),
+        axis.title = element_blank(),
+        strip.background = element_blank(),
+        strip.text.y = element_text(angle = 0, face = "bold", hjust = 0, vjust = 0.5))
+heat_map_tax
+```
+
+```{r, fig.height=13, fig.width=11}
+heat_map_KEGGB + 
+  heat_map_tax + 
+  patchwork::plot_layout(ncol = 1, heights = c(1,0.7))
+ggsave("heatmap-keggB_tax.svg", width = 11, height = 13,
+       device = "svg", limitsize = FALSE)
+```
+
+
+```{r, fig.height=8, fig.width=10}
+heat_map01 <- long_df_annot_cluster %>% 
+  filter(!is.na(KEGG_ko)) %>% 
+  # Select top 25, keep ties to other samples
+  # slice_max(order_by = scaledTPM, by = c(LOCATION, VENT_FIELD, VENT_BIN), n = 25, with_ties = TRUE) %>% 
+  # Join with KEGG ID information
+  separate_longer_delim(KEGG_ko, delim = ",") %>% 
+  mutate(KEGG = str_remove_all(KEGG_ko, "ko:")) %>%
+  left_join(key_geneid, by = "KEGG") %>% 
+  filter(!is.na(KeggOrthology_B)) %>% 
+  # filter(!(KeggOrthology_B %in% rm_B)) %>% 
+  filter(KeggOrthology_B %in% keep_B) %>% 
+  # Create sample name for x axis
+  unite(SAMPLE_NAME, VENT_FIELD, VENT_FIELD, VENT_BIN, LOCATION, sep = "_") %>% 
+  mutate(SAMPLE_NAME_ORDER = factor(SAMPLE_NAME, levels = label_dendro_order_tax)) %>% 
+  # Get total
+  # group_by(SAMPLE_NAME_ORDER) %>% 
+  # mutate(TOTAL_TPM_BYSAMPLE = sum(scaledTPM)) %>% 
+  # ungroup() %>% 
+  group_by(SAMPLE_NAME_ORDER, KeggOrthology_A, KeggOrthology_B, KeggOrthology_C) %>% 
+    summarise(SUM_TPM = sum(scaledTPM),
+              # TPM_RELABUN = (SUM_TPM/TOTAL_TPM_BYSAMPLE),
+              logSUM_TPM = log(SUM_TPM)) %>% 
+  ggplot(aes(x = SAMPLE_NAME_ORDER, y = KeggOrthology_C, fill = logSUM_TPM)) +
+  geom_tile(stat = "identity", linewidth = 0.1, color = "black") +
+      scale_fill_stepsn(
+      # limits = c(-10,10),
+      na.value = NA,
+      show.limits = TRUE,
+      colors = pink_qual) +
+  facet_grid(rows = vars(KeggOrthology_B),
+             scales = "free", space = "free") +
+  theme_classic() +
+  theme(axis.text = element_text(color = "black", size = 10, face = "bold"),
+        legend.title = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, size = 10, face = "bold"),
+        axis.title = element_blank(),
+        strip.background = element_blank(),
+        strip.text.y = element_text(angle = 0, face = "bold", hjust = 0, vjust = 0.5))
+heat_map01
+```
+
+```{r, fig.height=8, fig.width=10}
+heat_map02 <- long_df_annot_cluster %>% 
+  filter(SUPERGROUP_18S == "Alveolata-Ciliophora") %>% 
+  filter(!is.na(KEGG_ko)) %>% 
+  # Join with KEGG ID information
+  separate_longer_delim(KEGG_ko, delim = ",") %>% 
+  mutate(KEGG = str_remove_all(KEGG_ko, "ko:")) %>%
+  left_join(key_geneid, by = "KEGG") %>% 
+  filter(!is.na(Category01)) %>% 
+  # filter(!(KeggOrthology_B %in% rm_B)) %>% 
+  # filter(KeggOrthology_B %in% keep_B) %>% 
+  # Create sample name for x axis
+  unite(SAMPLE_NAME, VENT_FIELD, VENT_FIELD, VENT_BIN, LOCATION, sep = "_") %>% 
+  mutate(SAMPLE_NAME_ORDER = factor(SAMPLE_NAME, levels = label_dendro_order_tax)) %>% 
+  # Get total
+  # group_by(SAMPLE_NAME_ORDER) %>% 
+  # mutate(TOTAL_TPM_BYSAMPLE = sum(scaledTPM)) %>% 
+  # ungroup() %>% 
+  group_by(SAMPLE_NAME_ORDER, Category01, Category02) %>% 
+    summarise(SUM_TPM = sum(scaledTPM),
+              # TPM_RELABUN = (SUM_TPM/TOTAL_TPM_BYSAMPLE),
+              logSUM_TPM = log(SUM_TPM)) %>% 
+  ggplot(aes(x = SAMPLE_NAME_ORDER, y = Category02, fill = logSUM_TPM)) +
+  geom_tile(stat = "identity", linewidth = 0.1, color = "black") +
+      scale_fill_stepsn(
+      # limits = c(-10,10),
+      na.value = NA,
+      show.limits = TRUE,
+      colors = pink_qual) +
+  facet_grid(rows = vars(Category01),
+             scales = "free", space = "free") +
+  theme_classic() +
+  theme(axis.text = element_text(color = "black", size = 10, face = "bold"),
+        legend.title = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, size = 10, face = "bold"),
+        axis.title = element_blank(),
+        strip.background = element_blank(),
+        strip.text.y = element_text(angle = 0, face = "bold", hjust = 0, vjust = 0.5))
+heat_map02
+```
+```{r, fig.height=8, fig.width=10}
+heat_map03 <- long_df_annot_cluster %>% 
+  filter(SUPERGROUP_18S == "Alveolata-Ciliophora") %>% 
+  filter(!is.na(KEGG_ko)) %>% 
+  # Join with KEGG ID information
+  separate_longer_delim(KEGG_ko, delim = ",") %>% 
+  mutate(KEGG = str_remove_all(KEGG_ko, "ko:")) %>%
+  left_join(key_geneid, by = "KEGG") %>% 
+  filter(!is.na(Category01)) %>% 
+  filter(Category02 == "Fatty acid breakdown") %>% 
+  # filter(!(KeggOrthology_B %in% rm_B)) %>% 
+  # filter(KeggOrthology_B %in% keep_B) %>% 
+  # Create sample name for x axis
+  unite(SAMPLE_NAME, VENT_FIELD, VENT_FIELD, VENT_BIN, LOCATION, sep = "_") %>% 
+  mutate(SAMPLE_NAME_ORDER = factor(SAMPLE_NAME, levels = label_dendro_order_tax)) %>% 
+  # Get total
+  # group_by(SAMPLE_NAME_ORDER) %>% 
+  # mutate(TOTAL_TPM_BYSAMPLE = sum(scaledTPM)) %>% 
+  # ungroup() %>% 
+  group_by(SAMPLE_NAME_ORDER, GeneID, Category02) %>% 
+    summarise(SUM_TPM = sum(scaledTPM),
+              # TPM_RELABUN = (SUM_TPM/TOTAL_TPM_BYSAMPLE),
+              logSUM_TPM = log(SUM_TPM)) %>% 
+  ggplot(aes(x = SAMPLE_NAME_ORDER, y = GeneID, fill = logSUM_TPM)) +
+  geom_tile(stat = "identity", linewidth = 0.1, color = "black") +
+      scale_fill_stepsn(
+      # limits = c(-10,10),
+      na.value = NA,
+      show.limits = TRUE,
+      colors = pink_qual) +
+  facet_grid(rows = vars(Category02),
+             scales = "free", space = "free") +
+  theme_classic() +
+  theme(axis.text = element_text(color = "black", size = 10, face = "bold"),
+        legend.title = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, size = 10, face = "bold"),
+        axis.title = element_blank(),
+        strip.background = element_blank(),
+        strip.text.y = element_text(angle = 0, face = "bold", hjust = 0, vjust = 0.5))
+heat_map03
+```
+
+```{r, fig.height=3, fig.width=8}
+vent_field_order <- c("Gorda Ridge", "Piccard", "Von Damm")
+vent_field_color <- c("#74c476", "#ef6548", "#08589e")
+vent_bin_order <- c("Vent", "Plume", "Background")
+vent_bin_color <- c("#252525", "#969696", "#d9d9d9")
+
+
+vent_field_color_plot <- long_df_annot_cluster %>% 
+  unite(SAMPLE_NAME, VENT_FIELD, VENT_BIN, LOCATION, sep = "_", remove = FALSE) %>% 
+  select(SAMPLE_NAME, VENT_FIELD, VENT_BIN, LOCATION) %>% 
+  distinct() %>% 
+  mutate(VENT_FIELD_2 = case_when(
+    LOCATION == "Plume" ~ "Plume",
+    TRUE ~ VENT_BIN
+  )) %>% 
+  mutate(SAMPLE_NAME_ORDER = factor(SAMPLE_NAME, levels = sample_dendro_order)) %>% 
+  ggplot(aes(x = SAMPLE_NAME_ORDER, y = 1, fill = VENT_FIELD)) +
+  geom_tile(stat = "identity", linewidth = 0.1, color = "black") +
+  scale_fill_manual(values = vent_field_color) +
+  theme_classic() +
+  theme(legend.title = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, size = 10, face = "bold"),
+        axis.text.y = element_blank(),
+        axis.title = element_blank(),
+        strip.background = element_blank(),
+        strip.text = element_blank(),
+        plot.background = element_blank(),
+        axis.line = element_blank(),
+        axis.ticks = element_blank())
+
+vent_bin_color_plot <- long_df_annot_cluster %>% 
+  unite(SAMPLE_NAME, VENT_FIELD, VENT_BIN, LOCATION, sep = "_", remove = FALSE) %>% 
+  select(SAMPLE_NAME, VENT_FIELD, VENT_BIN, LOCATION) %>% 
+  distinct() %>% 
+  mutate(VENT_FIELD_2 = case_when(
+    LOCATION == "Plume" ~ "Plume",
+    TRUE ~ VENT_BIN
+  )) %>% 
+  mutate(SAMPLE_NAME_ORDER = factor(SAMPLE_NAME, levels = sample_dendro_order)) %>% 
+  ggplot(aes(x = SAMPLE_NAME_ORDER, y = 1, fill = VENT_FIELD_2)) +
+  geom_tile(stat = "identity", linewidth = 0.1, color = "black") +
+  scale_fill_manual(values = vent_bin_color) +
+  theme_classic() +
+  theme(legend.title = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, size = 10, face = "bold"),
+        axis.text.y = element_blank(),
+        axis.title = element_blank(),
+        strip.background = element_blank(),
+        strip.text = element_blank(),
+        plot.background = element_blank(),
+        axis.line = element_blank(),
+        axis.ticks = element_blank())
+
+```
+
+```{r}
+(dendro_plot_tax) + (vent_bin_color_plot + coord_flip()) + (vent_field_color_plot + coord_flip()) + (heat_map01) +
+  patchwork::plot_layout(nrow = 1, widths = c(0.15, 0.1, 0.1, 1))
+
+# ggsave("heatmap-w-colorbars.svg", width = 19, height = 10,
+       # device = "svg", limitsize = FALSE)
+```
+
+
+
+```{r, fig.height=7, fig.width=9}
+long_df_annot_cluster %>% 
+  select(LOCATION, VENT_FIELD, VENT_BIN, KEGG_ko, scaledTPM) %>% 
+  # filter(NUM_ZERO < more_than_2) %>%
+  filter(!is.na(KEGG_ko)) %>% 
+  separate_longer_delim(KEGG_ko, delim = ",") %>% 
+  mutate(KEGG = str_remove_all(KEGG_ko, "ko:")) %>%
+  left_join(key_geneid, by = "KEGG") %>% 
+  filter(!is.na(Category01)) %>% 
+  filter(!(Category02 %in% rm_list)) %>% 
+  unite(SAMPLE_NAME_ORDER, LOCATION, VENT_FIELD, VENT_BIN, sep = "_") %>% 
+  group_by(SAMPLE_NAME_ORDER) %>% 
+  mutate(TOTAL_TPM_BYSAMPLE = sum(scaledTPM)) %>% 
+  ungroup() %>% 
+  group_by(SAMPLE_NAME_ORDER, Category01, Category02) %>% 
+    summarise(SUM_TPM = sum(scaledTPM),
+              TPM_RELABUN = ((SUM_TPM/TOTAL_TPM_BYSAMPLE)*100),
+              logSUM_TPM = log(SUM_TPM)) %>% 
+  ggplot(aes(x = SAMPLE_NAME_ORDER, y = Category02, fill = TPM_RELABUN)) +
+  geom_tile(stat = "identity", linewidth = 0.1, color = "black") +
+      scale_fill_stepsn(
+      # limits = c(-10,10),
+      na.value = NA,
+      show.limits = TRUE,
+      colors = pink_qual) +
+  facet_grid(rows = vars(Category01),
+             scales = "free", space = "free") +
+  theme_classic() +
+  theme(axis.text = element_text(color = "black", size = 12, face = "bold"),
+        legend.title = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, size = 12, face = "bold"),
+        axis.title = element_blank(),
+        strip.background = element_blank())
+
+```
+
+```{r}
+separate_longer_delim(KEGG_ko, delim = ",") %>% 
+  mutate(KEGG = str_remove_all(KEGG_ko, "ko:")) %>%
+  left_join(key_geneid, by = "KEGG") %>% 
+```
+
+
+```{r}
+# class(dendro_plot_tax$labels)
+tmp <- data.frame(dendro_plot_ciliate$labels)
+sample_dendro_order_ciliate <- as.character(tmp$label)
+sample_dendro_order_ciliate
+```
+## Ciliates at vents
+```{r}
+label_ciliatevent
+```
+
+
+```{r, fig.height=8, fig.width=9}
+heat_map_ciliate_only <- long_df_annot_cluster %>% 
+  filter(!is.na(KEGG_ko)) %>% 
+  filter(SUPERGROUP_18S == "Alveolata-Ciliophora") %>% 
+  filter(VENT_BIN == "Vent") %>% 
+  # Join with KEGG ID information
+  separate_longer_delim(KEGG_ko, delim = ",") %>% 
+  mutate(KEGG = str_remove_all(KEGG_ko, "ko:")) %>%
+  left_join(key_geneid, by = "KEGG") %>% 
+  filter(!is.na(KeggOrthology_B)) %>% 
+  # Create sample name for x axis
+  unite(SAMPLE_NAME, VENT_FIELD, VENT_FIELD, VENT_BIN, LOCATION, sep = "_") %>% 
+  mutate(SAMPLE_NAME_ORDER = factor(SAMPLE_NAME, levels = label_ciliatevent)) %>% 
+  # Get total
+  group_by(SAMPLE_NAME_ORDER, KeggOrthology_A, KeggOrthology_B) %>% 
+    summarise(SUM_TPM = sum(scaledTPM),
+              # TPM_RELABUN = (SUM_TPM/TOTAL_TPM_BYSAMPLE),
+              logSUM_TPM = log(SUM_TPM)) %>% 
+  ggplot(aes(x = SAMPLE_NAME_ORDER, y = KeggOrthology_B, fill = logSUM_TPM)) +
+  geom_tile(stat = "identity", linewidth = 0.3, color = "black") +
+      scale_fill_stepsn(
+      na.value = NA,
+      show.limits = TRUE,
+      colors = pink_qual) +
+  facet_grid(rows = vars(KeggOrthology_A),
+             scales = "free", space = "free",
+             labeller = label_wrap_gen(width = 14)) +
+  theme_classic() +
+  theme(axis.text = element_text(color = "black", size = 10, face = "bold"),
+        legend.title = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, size = 8, face = "bold"),
+        axis.title = element_blank(),
+        strip.background = element_blank(),
+        strip.text.y = element_text(angle = 0, face = "bold", hjust = 0, vjust = 0.5))
+heat_map_ciliate_only
+# ggsave("osm-figs/ciliate-keggB.svg", width = 9, height = 8, device = "svg", limitsize = FALSE)
+```
+
+
+```{r}
+# View(long_df_annot_cluster %>% 
+#   filter(!is.na(KEGG_ko)) %>% 
+#   filter(SUPERGROUP_18S == "Alveolata-Ciliophora") %>% 
+#   filter(VENT_BIN == "Vent") %>% 
+#   # Join with KEGG ID information
+#   separate_longer_delim(KEGG_ko, delim = ",") %>% 
+#   mutate(KEGG = str_remove_all(KEGG_ko, "ko:")) %>%
+#   left_join(key_geneid, by = "KEGG") %>% 
+#   filter(!is.na(KeggOrthology_B)) %>% 
+#   filter(KeggOrthology_B == "Signal transduction") %>% 
+#     select(scaledTPM, LOCATION, VENT_FIELD, PFAMs, Gene_identification) %>% 
+#     distinct())
+```
+
+```{r}
+unique(key_geneid$Category01)
+```
+
+
+```{r, fig.height=8, fig.width=9}
+heat_map_ciliate_only_custom <- long_df_annot_cluster %>% 
+  filter(!is.na(KEGG_ko)) %>% 
+  filter(SUPERGROUP_18S == "Alveolata-Ciliophora") %>% 
+  filter(VENT_BIN == "Vent") %>% 
+  # Join with KEGG ID information
+  separate_longer_delim(KEGG_ko, delim = ",") %>% 
+  mutate(KEGG = str_remove_all(KEGG_ko, "ko:")) %>%
+  left_join(key_geneid, by = "KEGG") %>% 
+  filter(!is.na(KeggOrthology_B)) %>% 
+  filter(!is.na(Category01) | !is.na(Category02)) %>% 
+  # Create sample name for x axis
+  unite(SAMPLE_NAME, VENT_FIELD, VENT_FIELD, VENT_BIN, LOCATION, sep = "_") %>% 
+  mutate(SAMPLE_NAME_ORDER = factor(SAMPLE_NAME, levels = label_ciliatevent)) %>% 
+  group_by(SAMPLE_NAME_ORDER, Category01) %>% 
+  mutate(TOTAL_TPM_BYSAMPLE = sum(scaledTPM)) %>% 
+  # Get total
+  group_by(SAMPLE_NAME_ORDER, Category01, Category02) %>% 
+    summarise(SUM_TPM = sum(scaledTPM),
+              TPM_RELABUN = (SUM_TPM/TOTAL_TPM_BYSAMPLE),
+              logSUM_TPM = log(SUM_TPM)) %>% 
+  ggplot(aes(x = SAMPLE_NAME_ORDER, y = Category02, fill = TPM_RELABUN)) +
+  geom_tile(stat = "identity", linewidth = 0.3, color = "black") +
+      scale_fill_stepsn(
+      na.value = NA,
+      show.limits = TRUE,
+      colors = pink_qual) +
+  facet_grid(rows = vars(Category01),
+             scales = "free", space = "free",
+             labeller = label_wrap_gen(width = 14)) +
+  theme_classic() +
+  theme(axis.text = element_text(color = "black", size = 10, face = "bold"),
+        legend.title = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, size = 8, face = "bold"),
+        axis.title = element_blank(),
+        strip.background = element_blank(),
+        strip.text.y = element_text(angle = 0, face = "bold", hjust = 0, vjust = 0.5))
+heat_map_ciliate_only_custom
+# ggsave("osm-figs/ciliate-custom.svg", width = 9, height = 8, device = "svg", limitsize = FALSE)
+```
+```{r, fig.height=4, fig.width=6}
+heat_map_ciliate_only_custom02 <- long_df_annot_cluster %>% 
+  filter(!is.na(KEGG_ko)) %>% 
+  filter(SUPERGROUP_18S == "Alveolata-Ciliophora") %>% 
+  filter(VENT_BIN == "Vent") %>% 
+  # Join with KEGG ID information
+  separate_longer_delim(KEGG_ko, delim = ",") %>% 
+  mutate(KEGG = str_remove_all(KEGG_ko, "ko:")) %>%
+  left_join(key_geneid, by = "KEGG") %>% 
+  filter(!is.na(KeggOrthology_B)) %>% 
+  filter(!is.na(Category01) | !is.na(Category02)) %>% 
+  # Create sample name for x axis
+  unite(SAMPLE_NAME, VENT_FIELD, VENT_FIELD, VENT_BIN, LOCATION, sep = "_") %>% 
+  mutate(SAMPLE_NAME_ORDER = factor(SAMPLE_NAME, levels = label_ciliatevent)) %>% 
+  # Get total
+  group_by(SAMPLE_NAME_ORDER, Category01, Category02, GeneID) %>% 
+    summarise(SUM_TPM = sum(scaledTPM),
+              # TPM_RELABUN = (SUM_TPM/TOTAL_TPM_BYSAMPLE),
+              logSUM_TPM = log(SUM_TPM)) %>% 
+  filter(Category02 == "Glyoxylate cycle") %>% 
+  ggplot(aes(x = SAMPLE_NAME_ORDER, y = GeneID, fill = logSUM_TPM)) +
+  geom_tile(stat = "identity", linewidth = 0.3, color = "black") +
+      scale_fill_stepsn(
+      na.value = NA,
+      show.limits = TRUE,
+      colors = pink_qual) +
+  facet_grid(rows = vars(Category02),
+             scales = "free", space = "free",
+             labeller = label_wrap_gen(width = 14)) +
+  theme_classic() +
+  theme(axis.text = element_text(color = "black", size = 10, face = "bold"),
+        legend.title = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, size = 8, face = "bold"),
+        axis.title = element_blank(),
+        strip.background = element_blank(),
+        strip.text.y = element_text(angle = 0, face = "bold", hjust = 0, vjust = 0.5))
+heat_map_ciliate_only_custom02
+# ggsave("osm-figs/ciliate-custom.svg", width = 9, height = 8, device = "svg", limitsize = FALSE)
+```
+## Ciliate - taxonomy
+
+```{r}
+head(long_df_annot_cluster)
+green_blue <- c("#fff7fb","#ece2f0","#a6bddb","#67a9cf","#02818a","#016c59","#014636", "#004529")
+```
+```{r}
+View(filter(long_df_annot_cluster, Class == "Parablepharismea"))
+```
+
+
+```{r, fig.height=4.5, fig.width=7}
+heat_map_ciliate_tax <- long_df_annot_cluster %>% 
+  filter(!is.na(KEGG_ko)) %>% 
+  filter(SUPERGROUP_18S == "Alveolata-Ciliophora") %>% 
+  filter(VENT_BIN == "Vent") %>% 
+  filter(!is.na(Class)) %>% 
+  # Create sample name for x axis
+  unite(SAMPLE_NAME, VENT_FIELD, VENT_FIELD, VENT_BIN, LOCATION, sep = "_") %>% 
+  mutate(SAMPLE_NAME_ORDER = factor(SAMPLE_NAME, levels = label_ciliatevent)) %>% 
+  # Get total
+  group_by(SAMPLE_NAME_ORDER, Phylum, Class) %>% 
+    summarise(SUM_TPM = sum(scaledTPM),
+              # TPM_RELABUN = (SUM_TPM/TOTAL_TPM_BYSAMPLE),
+              logSUM_TPM = log(SUM_TPM)) %>% 
+  ggplot(aes(x = SAMPLE_NAME_ORDER, y = Class, fill = logSUM_TPM)) +
+  geom_tile(stat = "identity", linewidth = 0.3, color = "black") +
+      scale_fill_stepsn(
+      na.value = NA,
+      show.limits = TRUE,
+      colors = green_blue) +
+  facet_grid(rows = vars(Phylum), space = "free", scales = "free") +
+  theme_classic() +
+  theme(axis.text = element_text(color = "black", size = 10, face = "bold"),
+        legend.title = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, size = 4, face = "bold"),
+        axis.title = element_blank(),
+        # axis.text.y = element_blank(),
+        strip.background = element_blank(),
+        strip.text.y = element_text(angle = 0, face = "bold", hjust = 0, vjust = 0.5))
+heat_map_ciliate_tax
+# ggsave("osm-figs/ciliate-Order.svg", width = 7, height = 4.5, device = "svg", limitsize = FALSE)
+
+```
+
+
+
+## Ciliate - phagotrophy
+```{r}
+ciliate_boxplot <- long_df_annot_cluster %>% 
+  filter(SUPERGROUP_18S == "Alveolata-Ciliophora") %>% 
+  filter(VENT_BIN == "Vent") %>% 
+  group_by(LOCATION, VENT_FIELD, SUPERGROUP_18S, Phylum, Class, Order, Family, Genus_spp) %>% 
+  summarise(SUM_TPM = sum(scaledTPM)) %>% 
+  ungroup() %>% 
+  mutate(z_score = scale(SUM_TPM)) %>% 
+  ggplot(aes(x = LOCATION, y = log(SUM_TPM), group = LOCATION)) +
+  geom_hline(yintercept = 0, color = "darkred") +
+    geom_jitter(shape = 21, color = "black", aes(fill = Family), size = 1, width = 0.2) +
+  geom_boxplot(position = "dodge2", fill = "white", alpha = 0.3) +
+  scale_fill_manual(values = c("#acfe9f","#a2e453","#26a314","#316728", "#f1c965","#ef617b", "#61d4ef", "#1449a3", "#bc65f1")) +
+  facet_grid(rows = vars(VENT_FIELD), scales = "free", space = "free") +
+  coord_flip() +
+    theme_classic() +
+  theme(axis.text = element_text(color = "black", size = 12, face = "bold"),
+        legend.title = element_blank(),
+        axis.text.x = element_text(size = 12, face = "bold"),
+        axis.title = element_blank())
+```
+
+
+```{r}
+head(long_df_annot_cluster)
+```
+
+### Plot overall vent signature for ciliates
+```{r, fig.height=5, fig.width=7}
+# unique(long_df_annot_cluster$SUPERGROUP_18S)
+long_df_annot_cluster %>% 
+  # select(LOCATION, NUM_ZERO, VENT_FIELD, VENT_BIN, CLUSTER, SUPERGROUP_18S, full_classification, KEGG_ko, scaledTPM) %>% 
+  # filter(NUM_ZERO < more_than_2) %>%
+  # filter(!is.na(KEGG_ko)) %>% 
+  filter(SUPERGROUP_18S == "Alveolata-Ciliophora") %>% 
+  separate_longer_delim(KEGG_ko, delim = ",") %>% 
+  mutate(KEGG = str_remove_all(KEGG_ko, "ko:")) %>%
+  left_join(key_geneid, by = "KEGG") %>% 
+  # filter(!is.na(Category01)) %>% 
+  # filter(!(Category02 %in% rm_list)) %>% 
+  filter(Category01 == "Phagotrophy") %>% 
+  filter(VENT_BIN == "Vent") %>% 
+  unite(Phylum_Class, Phylum, Class, sep = ";") %>% 
+  # group_by(Category02, Phylum_Class, Gene_identification) %>% 
+  group_by(Category02, Phylum_Class) %>% 
+    summarise(SUM_TPM = sum(scaledTPM),
+              logSUM_TPM = log(SUM_TPM)) %>% 
+  # ggplot(aes(x = Gene_identification, y = Phylum_Class, fill = logSUM_TPM)) +
+  ggplot(aes(x = Category02, y = Phylum_Class, fill = logSUM_TPM)) +
+  geom_tile(stat = "identity", linewidth = 0.1, color = "black") +
+      scale_fill_stepsn(
+      limits = c(-10,10),
+      na.value = NA,
+      show.limits = TRUE,
+      colors = pink_qual) +
+  facet_grid(cols = vars(Category02),
+             scales = "free", space = "free") +
+  theme_classic() +
+  theme(axis.text = element_text(color = "black", size = 12, face = "bold"),
+        legend.title = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, size = 12, face = "bold"),
+        axis.title = element_blank(),
+        strip.background = element_blank(),
+        strip.text.y = element_text(angle = 0, face = "bold", hjust = 0, vjust = 0.5, size = 12))
+
+```
+
+
+
+```{r}
+(key_geneid %>% filter(Category01 == "Phagotrophy") %>% select(Category02) %>% distinct())
+phagotrophy_order <- c("Motility and prey recognition", "Actin polymerization", "Lysosome binding and processing","Chitinase","V-type ATPase", "Phagosome maturation", "Endocytosis", "SNARE complex","Fatty acid biosynthesis", "Fatty acid breakdown")
+# length(phagotrophy_order)
+phagotrophy_color <- c("#49a381","#a8e6cf","#94b166", "#dcedc1","#e99660", "#ffd3b6","#e96f68", "#ffaaa5","#c44c55", "#ff8b94")
+```
+
+
+```{r, fig.height=5, fig.width=9}
+# unique(long_df_annot_cluster$SUPERGROUP_18S)
+bar_plot_ciliate <- long_df_annot_cluster %>% 
+  filter(SUPERGROUP_18S == "Alveolata-Ciliophora") %>% 
+  separate_longer_delim(KEGG_ko, delim = ",") %>% 
+  mutate(KEGG = str_remove_all(KEGG_ko, "ko:")) %>%
+  left_join(key_geneid, by = "KEGG") %>% 
+  filter(Category01 == "Phagotrophy") %>% 
+  filter(VENT_BIN == "Vent") %>%
+  # unite(Phylum_Class, Phylum, Class, sep = ";") %>% 
+  # group_by(Category02, Gene_identification) %>%
+  group_by(VENT_FIELD, LOCATION, Category02) %>% 
+    summarise(SUM_TPM = sum(scaledTPM)) %>% 
+  mutate(CATEGORY02_ORDER = factor(Category02, levels = phagotrophy_order)) %>% 
+  ggplot(aes(y = SUM_TPM, fill = CATEGORY02_ORDER, x = LOCATION)) +
+    geom_bar(stat = "identity", position = "fill", color = "black") +
+  coord_flip() +
+  facet_grid(rows = vars(VENT_FIELD),
+             scales = "free", space = "free") +
+  theme_classic() +
+  scale_fill_manual(values = phagotrophy_color) +
+  theme(axis.text = element_text(color = "black", size = 10, face = "bold"),
+        legend.title = element_blank(),
+        legend.position = "right",
+        axis.line = element_blank(),
+        strip.text.x = element_text(size = 10, face = "bold"),
+        axis.title = element_blank(),
+        strip.background = element_blank(),
+        strip.text.y = element_text(angle = 0, face = "bold", hjust = 0, vjust = 0.5, size = 10))
+bar_plot_ciliate
+# ggsave("osm-figs/ciliate-phagotrophy-tree.svg", width = 17, height = 5, device = "svg", limitsize = FALSE)
+```
+
+```{r, fig.height=5, fig.width=9}
+# unique(long_df_annot_cluster$SUPERGROUP_18S)
+subset_vents <- c("MustardStand", "WhiteCastle", "ArrowLoop", "Shrimpocalypse")
+long_df_annot_cluster %>% 
+  filter(SUPERGROUP_18S == "Alveolata-Ciliophora") %>% 
+  separate_longer_delim(KEGG_ko, delim = ",") %>% 
+  mutate(KEGG = str_remove_all(KEGG_ko, "ko:")) %>%
+  left_join(key_geneid, by = "KEGG") %>% 
+  filter(Category01 == "Phagotrophy") %>% 
+  filter(VENT_BIN == "Vent") %>%
+  filter(LOCATION %in% subset_vents) %>% 
+  # group_by(Category02, Gene_identification) %>%
+  group_by(VENT_FIELD, LOCATION, Category02) %>% 
+    summarise(SUM_TPM = sum(scaledTPM)) %>% 
+  mutate(CATEGORY02_ORDER = factor(Category02, levels = phagotrophy_order)) %>% 
+  ggplot(aes(y = SUM_TPM, fill = CATEGORY02_ORDER, x = LOCATION)) +
+    geom_bar(stat = "identity", position = "stack", color = "black") +
+  coord_flip() +
+  facet_grid(rows = vars(VENT_FIELD),
+             scales = "free", space = "free") +
+  theme_classic() +
+  scale_fill_manual(values = phagotrophy_color) +
+  theme(axis.text = element_text(color = "black", size = 10, face = "bold"),
+        legend.title = element_blank(),
+        legend.position = "right",
+        axis.line = element_blank(),
+        strip.text.x = element_text(size = 10, face = "bold"),
+        axis.title = element_blank(),
+        strip.background = element_blank(),
+        strip.text.y = element_text(angle = 0, face = "bold", hjust = 0, vjust = 0.5, size = 10))
+# bar_plot_ciliate
+# ggsave("osm-figs/ciliate-phagotrophy-tree.svg", width = 17, height = 5, device = "svg", limitsize = FALSE)
+```
+
+```{r, fig.height=5, fig.width=17}
+# unique(long_df_annot_cluster$SUPERGROUP_18S)
+long_df_annot_cluster %>% 
+  filter(SUPERGROUP_18S == "Alveolata-Ciliophora") %>% 
+  separate_longer_delim(KEGG_ko, delim = ",") %>% 
+  mutate(KEGG = str_remove_all(KEGG_ko, "ko:")) %>%
+  left_join(key_geneid, by = "KEGG") %>% 
+  filter(Category01 == "Phagotrophy") %>% 
+  filter(VENT_BIN == "Vent") %>%
+  # unite(Phylum_Class, Phylum, Class, sep = ";") %>% 
+  # group_by(Category02, Gene_identification) %>%
+  group_by(VENT_FIELD, VENT_BIN, Category02, GeneID) %>% 
+    summarise(SUM_TPM = sum(scaledTPM),
+              logSUM_TPM = log(SUM_TPM)) %>% 
+  mutate(CATEGORY02_ORDER = factor(Category02, levels = phagotrophy_order)) %>% 
+  ggplot(aes(area = SUM_TPM, fill = CATEGORY02_ORDER, subgroup = GeneID, label = GeneID)) +
+    geom_treemap(color = "white") +
+    geom_treemap_subgroup_border(colour = "white", size = 2) +
+  geom_treemap_text(place = "center", grow = TRUE) +
+  facet_grid(cols = vars(CATEGORY02_ORDER),
+             rows = vars(VENT_FIELD),
+             scales = "free", space = "free",
+             labeller = label_wrap_gen()) +
+  theme_classic() +
+  scale_fill_manual(values = phagotrophy_color) +
+  theme(axis.text = element_text(color = "black", size = 10, face = "bold"),
+        legend.title = element_blank(),
+        legend.position = "none",
+        axis.line = element_blank(),
+        strip.text.x = element_text(size = 10, face = "bold"),
+        axis.title = element_blank(),
+        strip.background = element_blank(),
+        strip.text.y = element_text(angle = 0, face = "bold", hjust = 0, vjust = 0.5, size = 10))
+
+# ggsave("osm-figs/ciliate-phagotrophy-tree.svg", width = 17, height = 5, device = "svg", limitsize = FALSE)
+```
+
+
+```{r}
+keep_hets <- c("Lysosome binding and processing", "Phagosome maturation", "Fatty acid breakdown")
+tree_map_hets <- long_df_annot_cluster %>% 
+  filter(SUPERGROUP_18S == "Alveolata-Ciliophora") %>% 
+  separate_longer_delim(KEGG_ko, delim = ",") %>% 
+  mutate(KEGG = str_remove_all(KEGG_ko, "ko:")) %>%
+  left_join(key_geneid, by = "KEGG") %>% 
+  filter(Category01 == "Phagotrophy") %>% 
+  filter(Category02 %in% keep_hets) %>% 
+  filter(VENT_BIN == "Vent") %>%
+  group_by(VENT_FIELD, VENT_BIN, Category02, GeneID) %>% 
+    summarise(SUM_TPM = sum(scaledTPM),
+              logSUM_TPM = log(SUM_TPM)) %>% 
+  mutate(CATEGORY02_ORDER = factor(Category02, levels = phagotrophy_order)) %>% 
+  ggplot(aes(area = SUM_TPM, fill = CATEGORY02_ORDER, subgroup = GeneID, label = GeneID)) +
+    geom_treemap(color = "white") +
+    geom_treemap_subgroup_border(colour = "white", size = 2) +
+  geom_treemap_text(place = "center", grow = TRUE) +
+  facet_grid(cols = vars(CATEGORY02_ORDER),
+             rows = vars(VENT_FIELD),
+             scales = "free", space = "free",
+             labeller = label_wrap_gen()) +
+  theme_classic() +
+  scale_fill_manual(values = c("#94b166",  "#ffd3b6", "#ff8b94")) +
+  theme(axis.text = element_text(color = "black", size = 10, face = "bold"),
+        legend.title = element_blank(),
+        legend.position = "none",
+        axis.line = element_blank(),
+        strip.text.x = element_text(size = 10, face = "bold"),
+        axis.title = element_blank(),
+        strip.background = element_blank(),
+        strip.text.y = element_text(angle = 0, face = "bold", hjust = 0, vjust = 0.5, size = 10))
+```
+
+
+
+#### Combine with ciliate story
+
+```{r, fig.width=12, fig.height=7}
+heat_map_ciliate_only + 
+  (dendro_ggplot_ciliate) + 
+  patchwork::plot_layout(ncol = 2, widths = c(1,0.3))
+ggsave("osm-figs/ciliate-dendro_heat.svg", width = 13, height = 6, device = "svg", limitsize = FALSE)
+```
+
+
+
+```{r, fig.width=23, fig.height=9}
+ciliate_boxplot + bar_plot_ciliate + tree_map_hets + patchwork::plot_layout(nrow = 1, widths = c(1,1,1.5))
+# ggsave("osm-figs/ciliate-phagotrophy-tree.svg", width = 17, height = 5, device = "svg", limitsize = FALSE)
+```
+
+
+
+
+
+```{r, fig.height=5, fig.width=17}
+# unique(long_df_annot_cluster$SUPERGROUP_18S)
+long_df_annot_cluster %>% 
+  filter(SUPERGROUP_18S == "Excavata") %>% 
+  separate_longer_delim(KEGG_ko, delim = ",") %>% 
+  mutate(KEGG = str_remove_all(KEGG_ko, "ko:")) %>%
+  left_join(key_geneid, by = "KEGG") %>% 
+  filter(Category01 == "Phagotrophy") %>% 
+  filter(VENT_BIN == "Vent") %>%
+  # unite(Phylum_Class, Phylum, Class, sep = ";") %>% 
+  # group_by(Category02, Gene_identification) %>%
+  group_by(VENT_FIELD, VENT_BIN, Category02, GeneID) %>% 
+    summarise(SUM_TPM = sum(scaledTPM),
+              logSUM_TPM = log(SUM_TPM)) %>% 
+  mutate(CATEGORY02_ORDER = factor(Category02, levels = phagotrophy_order)) %>% 
+  ggplot(aes(area = SUM_TPM, fill = CATEGORY02_ORDER, subgroup = GeneID, label = GeneID)) +
+    geom_treemap(color = "white") +
+    geom_treemap_subgroup_border(colour = "white", size = 2) +
+  geom_treemap_text(place = "center", grow = TRUE) +
+  facet_grid(cols = vars(CATEGORY02_ORDER),
+             rows = vars(VENT_FIELD),
+             scales = "free", space = "free",
+             labeller = label_wrap_gen()) +
+  theme_classic() +
+  scale_fill_manual(values = phagotrophy_color) +
+  theme(axis.text = element_text(color = "black", size = 10, face = "bold"),
+        legend.title = element_blank(),
+        legend.position = "none",
+        axis.line = element_blank(),
+        strip.text.x = element_text(size = 10, face = "bold"),
+        axis.title = element_blank(),
+        strip.background = element_blank(),
+        strip.text.y = element_text(angle = 0, face = "bold", hjust = 0, vjust = 0.5, size = 10))
+# ggsave("osm-figs/excavata-phagotrophy-tree.svg", width = 17, height = 5, device = "svg", limitsize = FALSE)
+```
+
+```{r, fig.height=5, fig.width=17}
+# unique(long_df_annot_cluster$SUPERGROUP_18S)
+long_df_annot_cluster %>% 
+  filter(SUPERGROUP_18S == "Alveolata-Dinoflagellata") %>% 
+  separate_longer_delim(KEGG_ko, delim = ",") %>% 
+  mutate(KEGG = str_remove_all(KEGG_ko, "ko:")) %>%
+  left_join(key_geneid, by = "KEGG") %>% 
+  filter(Category01 == "Phagotrophy") %>% 
+  filter(VENT_BIN == "Vent") %>%
+  # unite(Phylum_Class, Phylum, Class, sep = ";") %>% 
+  # group_by(Category02, Gene_identification) %>%
+  group_by(VENT_FIELD, VENT_BIN, Category02, GeneID) %>% 
+    summarise(SUM_TPM = sum(scaledTPM),
+              logSUM_TPM = log(SUM_TPM)) %>% 
+  mutate(CATEGORY02_ORDER = factor(Category02, levels = phagotrophy_order)) %>% 
+  ggplot(aes(area = SUM_TPM, fill = CATEGORY02_ORDER, subgroup = GeneID, label = GeneID)) +
+    geom_treemap(color = "white") +
+    geom_treemap_subgroup_border(colour = "white", size = 2) +
+  geom_treemap_text(place = "center", grow = TRUE) +
+  facet_grid(cols = vars(CATEGORY02_ORDER),
+             rows = vars(VENT_FIELD),
+             scales = "free", space = "free",
+             labeller = label_wrap_gen()) +
+  theme_classic() +
+  scale_fill_manual(values = phagotrophy_color) +
+  theme(axis.text = element_text(color = "black", size = 10, face = "bold"),
+        legend.title = element_blank(),
+        legend.position = "none",
+        axis.line = element_blank(),
+        strip.text.x = element_text(size = 10, face = "bold"),
+        axis.title = element_blank(),
+        strip.background = element_blank(),
+        strip.text.y = element_text(angle = 0, face = "bold", hjust = 0, vjust = 0.5, size = 10))
+# ggsave("osm-figs/excavata-phagotrophy-tree.svg", width = 17, height = 5, device = "svg", limitsize = FALSE)
+```
+
+**REPEAT BUT WITH LOTS OF THE KEY TAXA TO LOOK AT THE PHAGOTROPHY GENES
+
+```{r, fig.height=7, fig.width=18}
+# unique(long_df_annot_cluster$SUPERGROUP_18S)
+keep <- c("Excavata", "Alveolata-Dinoflagellata", "Alveolata-Ciliophora")
+long_df_annot_cluster %>% 
+  filter(SUPERGROUP_18S %in% keep) %>% 
+  separate_longer_delim(KEGG_ko, delim = ",") %>% 
+  mutate(KEGG = str_remove_all(KEGG_ko, "ko:")) %>%
+  left_join(key_geneid, by = "KEGG") %>% 
+  filter(Category01 == "Phagotrophy") %>% 
+  filter(VENT_BIN == "Vent") %>%
+  # unite(Phylum_Class, Phylum, Class, sep = ";") %>% 
+  # group_by(Category02, Gene_identification) %>%
+  group_by(SUPERGROUP_18S, VENT_BIN, Category02, GeneID) %>% 
+    summarise(SUM_TPM = sum(scaledTPM),
+              logSUM_TPM = log(SUM_TPM)) %>% 
+  mutate(CATEGORY02_ORDER = factor(Category02, levels = phagotrophy_order)) %>% 
+  ggplot(aes(area = SUM_TPM, fill = CATEGORY02_ORDER, subgroup = GeneID, label = GeneID)) +
+    geom_treemap(color = "white") +
+    geom_treemap_subgroup_border(colour = "white", size = 2) +
+  geom_treemap_text(place = "center", grow = TRUE) +
+  facet_grid(cols = vars(CATEGORY02_ORDER),
+             rows = vars(SUPERGROUP_18S),
+             scales = "free", space = "free",
+             labeller = label_wrap_gen(width = 13)) +
+  theme_classic() +
+  scale_fill_manual(values = phagotrophy_color) +
+  theme(axis.text = element_text(color = "black", size = 16, face = "bold"),
+        legend.title = element_blank(),
+        legend.position = "none",
+        axis.line = element_blank(),
+        strip.text.x = element_text(size = 16, face = "bold"),
+        axis.title = element_blank(),
+        strip.background = element_blank(),
+        strip.text.y = element_text(angle = 90, face = "bold", hjust = 0, vjust = 0.5, size = 16))
+# ggsave("osm-figs/excavata-phagotrophy-tree.svg", width = 17, height = 5, device = "svg", limitsize = FALSE)
+```
+
+##
+```{r}
+glimpse(long_df_annot_cluster)
+head(long_df_annot_cluster)
+unique(key_geneid$KeggOrthology_B)
+dim(tmp)
+length(unique(tmp$Gene_identification))
+# head(tmp$scaledTPM)
+```
+
+```{r, fig.height=10, fig.width=18}
+glimpse(long_df_annot_cluster)
+long_df_annot_cluster %>% 
+  filter(SUPERGROUP_18S == "Alveolata-Ciliophora") %>%
+  # filter(SUPERGROUP_18S %in% keep) %>% 
+  separate_longer_delim(KEGG_ko, delim = ",") %>% 
+  mutate(KEGG = str_remove_all(KEGG_ko, "ko:")) %>%
+  left_join(key_geneid, by = "KEGG") %>% 
+  # filter(KeggOrthology_B == "Membrane transport") %>% 
+  filter(KeggOrthology_B == "Lipid metabolism") %>%
+  # filter(Category01 == "Phagotrophy") %>% 
+  filter(VENT_BIN == "Vent") %>% 
+  slice_max(
+  order_by = scaledTPM,
+  # n = 100,
+  prop = 0.1,
+  with_ties = TRUE,
+  na_rm = FALSE
+) %>% 
+  group_by(SUPERGROUP_18S, Family, VENT_BIN, KeggOrthology_C, KeggOrthology_B, KeggOrthology_Gene_description, LOCATION, GeneID) %>% 
+    summarise(SUM_TPM = sum(scaledTPM),
+              logSUM_TPM = log(SUM_TPM)) %>% 
+  # mutate(CATEGORY02_ORDER = factor(Category02, levels = phagotrophy_order)) %>% 
+  ggplot(aes(fill = SUM_TPM, x = LOCATION, y = KeggOrthology_Gene_description)) +
+    geom_tile(color = "black") +
+  facet_grid(cols = vars(KeggOrthology_C),
+             # rows = vars(SUPERGROUP_18S),
+             scales = "free", space = "free",
+             labeller = label_wrap_gen(width = 13)) +
+  theme_classic() +
+  # scale_size(range= c(2,20)) +
+  theme(axis.text = element_text(color = "black", size = 16, face = "bold"),
+        legend.title = element_blank(),
+        # legend.position = "none",
+        axis.line = element_blank(),
+        strip.text.x = element_text(size = 16, face = "bold"),
+        axis.title = element_blank(),
+        strip.background = element_blank(),
+        strip.text.y = element_text(angle = 90, face = "bold", hjust = 0, vjust = 0.5, size = 16))
+```
+
+
+
+# Plot metadata color bar
+
+```{r}
+sample_dendro_order
+```
+```{r}
+metadata <- read.delim("input-docs/metadata.txt", sep = "\t")
+glimpse(metadata)
+```
+
+Keep collapsed - was used to manually modify the metadata table.
+```{r}
+# metadata <- read_delim("../microeuks_deepbiosphere_datamine/microeuk-amplicon-survey/data-input/tableS1-geochem-params.txt")
+# # glimpse(metadata)
 # 
+# metadata_tmp <- metadata %>%
+#   filter(SITE != "Axial") %>%
+#   filter(VENT != "Shallow seawater", VENT != "Near vent BW", VENT != "Quakeplume") %>%
+#   mutate(SAMPLETYPE_2 = case_when(
+#     SAMPLETYPE == "Vent" ~ "Vent",
+#     TRUE ~ "Non-vent"
+#   ),
+#   VENT_2 = case_when(
+#     VENT == "Deep seawater" ~ "BSW",
+#     (SITE == "Piccard" & VENT == "BSW") ~ "Background",
+#     (SITE == "VonDamm" & VENT == "BSW") ~ "Background",
+#     grepl("Plume", VENT) ~ "Plume",
+#     VENT == "Rav2" ~ "Ravelin2",
+#     VENT == "LotsOShrimp" ~ "Lotsoshrimp",
+#     VENT == "Sir Ventsalot" ~ "SirVentsAlot",
+#     TRUE ~ str_replace_all(VENT, " ", "")
+#   ),
+#   SITE_2 = case_when(
+#     SITE == "GordaRidge" ~ "Gorda Ridge",
+#     SITE == "VonDamm" ~ "Von Damm",
+#     TRUE ~ SITE
+#   )) %>%
+#   # mutate(VENT_2 = str_squish(VENT_2)) %>%
+#   unite(SAMPLE_NAME, SITE_2, SAMPLETYPE_2, VENT_2) %>%
+#   select(SAMPLE_NAME, TEMP, DEPTH, pH, Mg, H2, H2S, CH4, ProkConc) %>%
+#   distinct()
+#### write_delim(metadata_tmp, file = "input-docs/metadata.txt", delim = "\t")
+
+```
+
+
+```{r}
+glimpse(metadata)
+metadata_metaT <- metadata %>% 
+  pivot_longer(TEMP:GrazingEffect_hr, names_to = "VARIABLES", values_to = "VALUES") %>% 
+  group_by(SAMPLE_NAME, VARIABLES) %>% 
+  summarise(VALUE = mean(VALUES)) %>% 
+  mutate(SAMPLE_NAME_ORDER = factor(SAMPLE_NAME, levels = label_ciliatevent)) 
+# mutate(SAMPLE_NAME_ORDER = factor(SAMPLE_NAME, levels = label_dendro_order_tax))
+
+metadata_metaT_nodendro <- metadata %>% 
+  pivot_longer(TEMP:GrazingEffect_hr, names_to = "VARIABLES", values_to = "VALUES") %>% 
+  group_by(SAMPLE_NAME, VARIABLES) %>% 
+  summarise(VALUE = mean(VALUES)) %>% 
+  separate(SAMPLE_NAME, into = c("Ventfield", "Sampletype", "vent"), sep = "_", remove = FALSE)
+  
+```
+
+
+```{r, fig.height=5, fig.width=10}
+(metadata_metaT %>% 
+  filter(VARIABLES == "TEMP") %>% 
+  ggplot(aes(x = SAMPLE_NAME_ORDER, y = VARIABLES, fill = VALUE)) +
+  geom_tile(stat = "identity", linewidth = 0.1, color = "black") +
+  scale_fill_gradient(low = "#fee0d2", high = "#cb181d") +
+  theme_classic() +
+  theme(legend.title = element_blank(),
+        axis.text.x = element_blank(),
+        axis.title = element_blank(),
+        strip.background = element_blank(),
+        strip.text = element_blank(),
+        plot.background = element_blank(),
+        axis.line = element_blank(),
+        axis.ticks = element_blank()) ) +
+(metadata_metaT %>% 
+    filter(VARIABLES == "pH") %>% 
+  ggplot(aes(x = SAMPLE_NAME_ORDER, y = VARIABLES, fill = VALUE)) +
+  geom_tile(stat = "identity", linewidth = 0.1, color = "black") +
+  scale_fill_gradient(low = "#fee0d2", high = "#cb181d") +
+  theme_classic() +
+  theme(legend.title = element_blank(),
+        axis.text.x = element_blank(),
+        # axis.text.y = element_blank(),
+        axis.title = element_blank(),
+        strip.background = element_blank(),
+        strip.text = element_blank(),
+        plot.background = element_blank(),
+        axis.line = element_blank(),
+        axis.ticks = element_blank()) ) +
+  (metadata_metaT %>% 
+    filter(VARIABLES == "CH4") %>% 
+  ggplot(aes(x = SAMPLE_NAME_ORDER, y = VARIABLES, fill = VALUE)) +
+  geom_tile(stat = "identity", linewidth = 0.1, color = "black") +
+  scale_fill_gradient(low = "#fee0d2", high = "#cb181d") +
+  theme_classic() +
+  theme(legend.title = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, size = 10, face = "bold"),
+        axis.title = element_blank(),
+        plot.background = element_blank(),
+        axis.line = element_blank(),
+        axis.ticks = element_blank()) ) +
+  patchwork::plot_layout(ncol = 1)
+
+ggsave("osm-figs/heatmap-env-params.svg", width = 10, height = 5, device = "svg", limitsize = FALSE)
+```
+
+```{r, fig.height=6, fig.width=10}
+(metadata_metaT %>% 
+  filter(VARIABLES == "ProkConc") %>% 
+  ggplot(aes(x = SAMPLE_NAME_ORDER, y = VARIABLES, fill = VALUE)) +
+  geom_tile(stat = "identity", linewidth = 0.1, color = "black") +
+  scale_fill_gradient(low = "#c6dbef", high = "#08306b") +
+  theme_classic() +
+      theme(legend.title = element_blank(),
+        axis.text.x = element_blank(),
+        axis.title = element_blank(),
+        strip.background = element_blank(),
+        # strip.text = element_blank(),
+        plot.background = element_blank(),
+        axis.line = element_blank(),
+        axis.ticks = element_blank()) ) +
+(metadata_metaT %>% 
+    filter(VARIABLES == "EukConc") %>% 
+  ggplot(aes(x = SAMPLE_NAME_ORDER, y = VARIABLES, fill = VALUE)) +
+  geom_tile(stat = "identity", linewidth = 0.1, color = "black") +
+  scale_fill_gradient(low = "#c6dbef", high = "#08306b") +
+theme_classic() +
+      theme(legend.title = element_blank(),
+        axis.text.x = element_blank(),
+        axis.title = element_blank(),
+        strip.background = element_blank(),
+        # strip.text = element_blank(),
+        plot.background = element_blank(),
+        axis.line = element_blank(),
+        axis.ticks = element_blank())  ) +
+  (metadata_metaT %>% 
+    filter(VARIABLES == "GrazingEffect_hr") %>% 
+  ggplot(aes(x = SAMPLE_NAME_ORDER, y = VARIABLES, fill = VALUE)) +
+  geom_tile(stat = "identity", linewidth = 0.1, color = "black") +
+  scale_fill_gradient(low = "#c6dbef", high = "#08306b") +
+  theme_classic() +
+     theme(legend.title = element_blank(),
+        axis.text.x = element_text(angle = 45),
+        axis.title = element_blank(),
+        strip.background = element_blank(),
+        # strip.text = element_blank(),
+        plot.background = element_blank(),
+        axis.line = element_blank(),
+        axis.ticks = element_blank()) ) +
+  patchwork::plot_layout(ncol = 1)
+
+ggsave("osm-figs/heatmap-biol-params_2.svg", width = 10, height = 5, device = "svg", limitsize = FALSE)
+```
+
+
+```{r, fig.height=6, fig.width=10}
+(metadata_metaT_nodendro %>% 
+  filter(VARIABLES == "ProkConc") %>% 
+  ggplot(aes(x = SAMPLE_NAME, y = VARIABLES, fill = VALUE)) +
+  geom_tile(stat = "identity", linewidth = 0.1, color = "black") +
+  scale_fill_gradient(low = "#c6dbef", high = "#08306b") +
+  theme_classic() +
+    facet_grid(cols = vars(Ventfield, Sampletype), scales = "free", space = "free")+
+  theme(legend.title = element_blank(),
+        axis.text.x = element_blank(),
+        axis.title = element_blank(),
+        strip.background = element_blank(),
+        # strip.text = element_blank(),
+        plot.background = element_blank(),
+        axis.line = element_blank(),
+        axis.ticks = element_blank()) ) +
+(metadata_metaT_nodendro %>% 
+    filter(VARIABLES == "EukConc") %>% 
+  ggplot(aes(x = SAMPLE_NAME, y = VARIABLES, fill = VALUE)) +
+  geom_tile(stat = "identity", linewidth = 0.1, color = "black") +
+  scale_fill_gradient(low = "#c6dbef", high = "#08306b") +
+theme_classic() +
+    facet_grid(cols = vars(Ventfield, Sampletype), scales = "free", space = "free")+
+  theme(legend.title = element_blank(),
+        axis.text.x = element_blank(),
+        axis.title = element_blank(),
+        strip.background = element_blank(),
+        # strip.text = element_blank(),
+        plot.background = element_blank(),
+        axis.line = element_blank(),
+        axis.ticks = element_blank())  ) +
+  (metadata_metaT_nodendro %>% 
+    filter(VARIABLES == "GrazingEffect_hr") %>% 
+  ggplot(aes(x = SAMPLE_NAME, y = VARIABLES, fill = VALUE)) +
+  geom_tile(stat = "identity", linewidth = 0.1, color = "black") +
+  scale_fill_gradient(low = "#c6dbef", high = "#08306b") +
+  theme_classic() +
+    facet_grid(cols = vars(Ventfield, Sampletype), scales = "free", space = "free")+
+  theme(legend.title = element_blank(),
+        axis.text.x = element_blank(),
+        axis.title = element_blank(),
+        strip.background = element_blank(),
+        # strip.text = element_blank(),
+        plot.background = element_blank(),
+        axis.line = element_blank(),
+        axis.ticks = element_blank()) ) +
+  patchwork::plot_layout(ncol = 1)
+
+# ggsave("osm-figs/heatmap-biol-params_2.svg", width = 10, height = 5, device = "svg", limitsize = FALSE)
+```
+
+```{r, fig.height=6, fig.width=10}
+# glimpse(metadata_metaT_nodendro)
+(metadata_metaT_nodendro %>% 
+  filter(VARIABLES == "TEMP") %>% 
+  ggplot(aes(x = SAMPLE_NAME, y = VARIABLES, fill = VALUE)) +
+  geom_tile(stat = "identity", linewidth = 0.1, color = "black") +
+  scale_fill_gradient(low = "#fee0d2", high = "#cb181d") +
+  theme_classic() +
+    facet_grid(cols = vars(Ventfield, Sampletype), scales = "free", space = "free")+
+  theme(legend.title = element_blank(),
+        axis.text.x = element_blank(),
+        axis.title = element_blank(),
+        strip.background = element_blank(),
+        # strip.text = element_blank(),
+        plot.background = element_blank(),
+        axis.line = element_blank(),
+        axis.ticks = element_blank()) ) +
+(metadata_metaT_nodendro %>% 
+    filter(VARIABLES == "pH") %>% 
+  ggplot(aes(x = SAMPLE_NAME, y = VARIABLES, fill = VALUE)) +
+  geom_tile(stat = "identity", linewidth = 0.1, color = "black") +
+  scale_fill_gradient(low = "#fee0d2", high = "#cb181d") +
+  theme_classic() +
+   theme_classic() +
+    facet_grid(cols = vars(Ventfield, Sampletype), scales = "free", space = "free")+
+  theme(legend.title = element_blank(),
+        axis.text.x = element_blank(),
+        axis.title = element_blank(),
+        strip.background = element_blank(),
+        # strip.text = element_blank(),
+        plot.background = element_blank(),
+        axis.line = element_blank(),
+        axis.ticks = element_blank()) ) +
+  (metadata_metaT_nodendro %>% 
+    filter(VARIABLES == "CH4") %>% 
+  ggplot(aes(x = SAMPLE_NAME, y = VARIABLES, fill = VALUE)) +
+  geom_tile(stat = "identity", linewidth = 0.1, color = "black") +
+  scale_fill_gradient(low = "#fee0d2", high = "#cb181d") +
+theme_classic() +
+    facet_grid(cols = vars(Ventfield, Sampletype), scales = "free", space = "free")+
+  theme(legend.title = element_blank(),
+        axis.text.x = element_blank(),
+        axis.title = element_blank(),
+        strip.background = element_blank(),
+        # strip.text = element_blank(),
+        plot.background = element_blank(),
+        axis.line = element_blank(),
+        axis.ticks = element_blank()) ) +
+  patchwork::plot_layout(ncol = 1)
+# ggsave("osm-figs/heatmap-env-params_2.svg", width = 10, height = 5, device = "svg", limitsize = FALSE)
+```
+
+
+#### metadata boxplots
+
+```{r, fig.height=5.5, fig.width=3.5}
+# unique(metadata_metaT$VARIABLES)
+# vent_field_order <- c("Gorda Ridge", "Piccard", "Von Damm")
+# vent_field_color <- c("#74c476", "#ef6548", "#08589e")
+metadata_metaT %>% 
+  group_by(SAMPLE_NAME_ORDER, VARIABLES) %>% 
+    summarise(MEAN = mean(VALUE)) %>% 
+  separate(SAMPLE_NAME_ORDER, into = c("FIELD", "BIN", "LOCATION"), sep = "_", remove = FALSE) %>% 
+  filter(VARIABLES == "EukConc" | VARIABLES == "ProkConc" | (VARIABLES == "GrazingEffect_hr" & MEAN > 0)) %>% 
+  ggplot(aes(x = BIN, y = MEAN)) +
+    geom_boxplot(stat = "boxplot") +
+    geom_jitter(shape = 21, aes(fill = FIELD), width = 0.2) +
+  scale_y_log10() +
+  scale_fill_manual(values = vent_field_color) +
+  facet_grid(rows = vars(VARIABLES), scales = "free") +
+  # theme_classic() #+
+  theme(axis.text.y = element_text(size = 10, face = "bold"),
+        axis.text.x = element_text(size = 10, face = "bold"),
+        axis.title = element_blank(),
+        strip.background = element_blank(),
+        panel.background = element_blank(),
+        panel.grid.major = element_line(color = "grey"),
+        strip.text = element_text(color = "black"),
+        axis.line = element_line(colour = "black"))
+ggsave("osm-figs/boxplots.svg", width = 3.5, height = 5.5,
+device = "svg", limitsize = FALSE)
+```
+
+
+# Session Information
+```{r}
+sessionInfo()
+```
+
