@@ -31,7 +31,7 @@ tax_and_fxn <- read.table("/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic
 
 # TEST LINE 
 # tax_and_fxn <- read.table("/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/TaxonomicAndFunctionalAnnotations.csv", header = TRUE, nrows = 250, sep = "\t")
-head(tax_and_fxn)
+# head(tax_and_fxn)
 
 ptm <- proc.time()
 
@@ -40,13 +40,14 @@ tx2gene_in <- tax_and_fxn %>%
   dplyr::select(SEQ_ID, TRANSCRIPT_ID = transcript_name)
 
 # Run tximport step
-txi <- tximport::tximport(files, type = "salmon", tx2gene = tx2gene_in)
+# txi <- tximport::tximport(files, type = "salmon", tx2gene = tx2gene_in)
+
+txi <- tximport::tximport(files, type = "salmon", tx2gene = tx2gene_in, txOut=TRUE, countsFromAbundance = "lengthScaledTPM")
 
 rm(tx2gene_in)
 rm(tax_and_fxn)
 
 print(proc.time()-ptm)
-
 
 cat("\nPrep txi and merged sample table for DEseq input\n")
 # library(tidyverse)
@@ -67,7 +68,7 @@ cat("\nAnd they should match these rownames:\n")
 rownames(sample_merged)
 
 
-save(txi, sample_merged, file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/tximport-nov-2023.RData")
+save(txi, sample_merged, file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/tximport-sept-2024.RData")
 
 cat("\nDONE\n")
 
