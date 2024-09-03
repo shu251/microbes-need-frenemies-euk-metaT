@@ -8,7 +8,6 @@ library(data.table)
 load("/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/tximport-MCR-sept-2024.RData", verbose = TRUE)
 # txi_mcr and sample_merged_mcr
 
-
 all_mcr <- sample_merged_mcr %>%
   select(sample = SAMPLE_REP)
 
@@ -91,14 +90,14 @@ resultsNames(ds_output_result)
 summary(ds_output_result)
 
 # Change naming schema
-byfield <- (data.frame(results(ds_output_field)) %>% 
+byfield <- (data.frame(results(ds_output_result)) %>% 
     add_column(DESEQ = "Von Damm vs. Piccard") %>% 
     mutate(REGULATION = case_when(
       log2FoldChange > 0 ~ "upregulated in Von Damm",
       log2FoldChange <= 0 ~ "upregulated in Piccard"
     )))
 ##
-cat("\n\nDESeq for Vent vs. non-vent\n\n\n")
+cat("\n\n 2. DESeq for Vent vs. non-vent\n\n\n")
 
 txi_mcr_output <- subsetTxi(txi_mcr, mcr_no_tf, all_transcripts)
 # 
@@ -126,7 +125,7 @@ resultsNames(ds_output_result)
 summary(ds_output_result)
 
 # Change naming schema
-bybin_type <- (data.frame(results(ds_output_field)) %>% 
+bybin_type <- (data.frame(results(ds_output_result)) %>% 
               add_column(DESEQ = "Vent vs. non-vent") %>% 
               mutate(REGULATION = case_when(
                 log2FoldChange > 0 ~ "upregulated in vent",
@@ -134,7 +133,7 @@ bybin_type <- (data.frame(results(ds_output_field)) %>%
               )))
 
 ###
-cat("\n\nDESeq for grazing vs. in situ\n\n\n")
+cat("\n\n 3. DESeq for grazing vs. in situ\n\n\n")
 
 txi_mcr_output <- subsetTxi(txi_mcr, mcr_paired_tf, all_transcripts)
  
@@ -162,7 +161,7 @@ resultsNames(ds_output_result)
 summary(ds_output_result)
 
 # Change naming schema
-byexp_type <- (data.frame(results(ds_output_field)) %>% 
+by_exptype <- (data.frame(results(ds_output_result)) %>% 
                  add_column(DESEQ = "Grazing vs. in situ") %>% 
                  mutate(REGULATION = case_when(
                    log2FoldChange > 0 ~ "upregulated in situ",

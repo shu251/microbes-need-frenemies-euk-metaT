@@ -33,6 +33,7 @@ long_df <- mean_mcr_TPM_df %>%
 
 glimpse(long_df)
 
+as_is <- c("Amoebozoa", "Apusozoa", "Excavata", "Hacrobia", "Archaeplastida")
 
 long_df_annot <- long_df %>%
   left_join(taxfxn, by = "SequenceID") %>%
