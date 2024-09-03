@@ -40,13 +40,13 @@ mcr_paired_tf <- sample_merged_mcr %>%
 # mcr_paired_tf, mcr_no_tf, all_mcr, vent_only_mcr
 
 taxfxn <- read.table("/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/TaxonomicAndFunctionalAnnotations.csv", header = TRUE, sep = "\t")
-
+# taxfxn <- read.table("/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/TaxonomicAndFunctionalAnnotations.csv", header = TRUE, nrows = 250, sep = "\t")
 tx2gene_in <- taxfxn %>% 
   dplyr::mutate(SEQ_ID = stringr::str_remove(SequenceID, ".p[:digit:]$"))
-
+# head(tx2gene_in)
 all_transcripts <- as.character(tx2gene_in %>%
-                                  select(transcript_name) %>% 
-                                  .[["transcript_name"]])
+                                  select(SEQ_ID) %>% 
+                                  .[["SEQ_ID"]])
 
 save(mcr_paired_tf, mcr_no_tf, all_mcr, vent_only_mcr, all_transcripts, file = "/scratch/group/hu-lab/frenemies/mcr-txi-subset-objects.RData")
 
@@ -58,92 +58,134 @@ subsetTxi <- function(txi, samples, include_genes=rownames(txi$counts))
   txi$counts <- txi$counts[genes, samples$sample]
   txi$length <- txi$length[genes, samples$sample]
   return(txi)
-  
 }
+
 ##
-cat("\n\nDESeq for Piccard vs. Von Damm\n\n\n")
+cat("\n\n 1. DESeq for Piccard vs. Von Damm\n\n\n")
 
-txi_mcr_byfield <- subsetTxi(txi_mcr, vent_only_mcr, all_transcripts)
+txi_mcr_output <- subsetTxi(txi_mcr, vent_only_mcr, all_transcripts)
 
-ds_tpm_field <- DESeqDataSetFromTximport(txi_mcr_byfield,
-                                         colData = vent_only_mcr,
-                                         design = ~0 + FIELDYR)
+subset_metadata_deseq <- sample_merged_mcr %>% 
+  filter(SAMPLE_REP %in% (as.character(vent_only_mcr$sample))) # Change df here.
+
+ds_tpm <- DESeqDataSetFromTximport(txi_mcr_output,
+                                         colData = subset_metadata_deseq,
+                                         design = ~0 + FIELDYR) # Change column header here
+
+## Subsample: transcripts must appear in more than 1 sample and have a sum greater than 10
+## "poscounts" estimator deals with a gene with some zeros, by calculating a modified geometric mean by taking the n-th root of the product of the non-zero counts. This evolved out of use cases with Paul McMurdie's phyloseq package for metagenomic samples.
+
+groupsize <- 1
+keep <- rowSums(counts(ds_tpm) >= 10) >= groupsize
+ds_tpm_filtered_0 <- ds_tpm[keep,]
+ds_tpm_output_filtered_est <- estimateSizeFactors(ds_tpm_filtered_0, type = 'poscounts')
+
+# Report
+cat("\nStarted with ", dim(ds_tpm)[1], "observations. Filtering by 2 samples and 10 counts resulted in,", dim(ds_tpm_filtered_0)[1], ", which is", (100*(dim(ds_tpm_filtered_0)[1]/dim(ds_tpm)[1])), "% of the data.\n\n")
 
 cat("\n\nUpreg in Von Damm is positive\n\n")
-ds_tpm_field$FIELDYR <- factor(ds_tpm_field$FIELDYR, levels = c("Piccard2020", "VonDamm2020"))
+ds_tpm_output_filtered_est$FIELDYR <- factor(ds_tpm_output_filtered_est$FIELDYR, levels = c("Piccard2020", "VonDamm2020")) # Change factors
 
-ds_output_field <- DESeq2::DESeq(ds_tpm_field)
-resultsNames(ds_output_field)
-summary(ds_output_field)
+ds_output_result <- DESeq2::DESeq(ds_tpm_output_filtered_est)
+resultsNames(ds_output_result)
+summary(ds_output_result)
 
-save(txi_mcr_byfield, vent_only_mcr, ds_tpm_field, ds_output_field, file = "/scratch/group/hu-lab/frenemies/MCR_byfield_DESeq.RData")
-
+# Change naming schema
+byfield <- (data.frame(results(ds_output_field)) %>% 
+    add_column(DESEQ = "Von Damm vs. Piccard") %>% 
+    mutate(REGULATION = case_when(
+      log2FoldChange > 0 ~ "upregulated in Von Damm",
+      log2FoldChange <= 0 ~ "upregulated in Piccard"
+    )))
 ##
 cat("\n\nDESeq for Vent vs. non-vent\n\n\n")
 
-txi_mcr_vent_nonvent <- subsetTxi(txi_mcr, mcr_no_tf, all_transcripts)
+txi_mcr_output <- subsetTxi(txi_mcr, mcr_no_tf, all_transcripts)
+# 
+subset_metadata_deseq <- sample_merged_mcr %>% 
+  filter(SAMPLE_REP %in% (as.character(mcr_no_tf$sample))) # Change df here.
 
-ds_tpm_bin_type <- DESeqDataSetFromTximport(txi_mcr_vent_nonvent,
-                                            colData = mcr_no_tf,
-                                            design = ~0 + TYPE_BIN)
+ds_tpm <- DESeqDataSetFromTximport(txi_mcr_output,
+                                   colData = subset_metadata_deseq,
+                                   design = ~0 + TYPE_BIN) # Change column header here
+## Subsample: transcripts must appear in more than 1 sample and have a sum greater than 10
+## "poscounts" estimator deals with a gene with some zeros, by calculating a modified geometric mean by taking the n-th root of the product of the non-zero counts. This evolved out of use cases with Paul McMurdie's phyloseq package for metagenomic samples.
+groupsize <- 1
+keep <- rowSums(counts(ds_tpm) >= 10) >= groupsize
+ds_tpm_filtered_0 <- ds_tpm[keep,]
+ds_tpm_output_filtered_est <- estimateSizeFactors(ds_tpm_filtered_0, type = 'poscounts')
+
+# Report
+cat("\nStarted with ", dim(ds_tpm)[1], "observations. Filtering by 2 samples and 10 counts resulted in,", dim(ds_tpm_filtered_0)[1], ", which is", (100*(dim(ds_tpm_filtered_0)[1]/dim(ds_tpm)[1])), "% of the data.\n\n")
 
 cat("\n\nUpreg in vent is positive\n\n")
-ds_tpm_bin_type$TYPE_BIN <- factor(ds_tpm_bin_type$TYPE_BIN, levels = c("Non-vent", "Vent"))
+ds_tpm_output_filtered_est$FIELDYR <- factor(ds_tpm_output_filtered_est$FIELDYR, levels = c("Non-vent", "Vent")) # Change factors
 
-de_output_bin_type <- DESeq2::DESeq(ds_tpm_bin_type)
-resultsNames(de_output_bin_type)
-summary(de_output_bin_type)
+ds_output_result <- DESeq2::DESeq(ds_tpm_output_filtered_est)
+resultsNames(ds_output_result)
+summary(ds_output_result)
 
-save(txi_mcr_byfield, mcr_no_tf, ds_tpm_bin_type, de_output_bin_type, file = "/scratch/group/hu-lab/frenemies/MCR_bytype_DESeq.RData")
+# Change naming schema
+bybin_type <- (data.frame(results(ds_output_field)) %>% 
+              add_column(DESEQ = "Vent vs. non-vent") %>% 
+              mutate(REGULATION = case_when(
+                log2FoldChange > 0 ~ "upregulated in vent",
+                log2FoldChange <= 0 ~ "upregulated in non-vent"
+              )))
 
 ###
 cat("\n\nDESeq for grazing vs. in situ\n\n\n")
 
-txi_mcr_tf_insitu <- subsetTxi(txi_mcr, mcr_paired_tf, all_transcripts)
+txi_mcr_output <- subsetTxi(txi_mcr, mcr_paired_tf, all_transcripts)
+ 
+subset_metadata_deseq <- sample_merged_mcr %>% 
+  filter(SAMPLE_REP %in% (as.character(mcr_paired_tf$sample))) # Change df here.
 
-ds_tpm_exp <- DESeqDataSetFromTximport(txi_mcr_tf_insitu,
-                                       colData = mcr_paired_tf,
-                                       design = ~0 + EXP)
+ds_tpm <- DESeqDataSetFromTximport(txi_mcr_output,
+                                   colData = subset_metadata_deseq,
+                                   design = ~0 + EXP) # Change column header here
+## Subsample: transcripts must appear in more than 1 sample and have a sum greater than 10
+## "poscounts" estimator deals with a gene with some zeros, by calculating a modified geometric mean by taking the n-th root of the product of the non-zero counts. This evolved out of use cases with Paul McMurdie's phyloseq package for metagenomic samples.
+groupsize <- 1
+keep <- rowSums(counts(ds_tpm) >= 10) >= groupsize
+ds_tpm_filtered_0 <- ds_tpm[keep,]
+ds_tpm_output_filtered_est <- estimateSizeFactors(ds_tpm_filtered_0, type = 'poscounts')
 
-cat("\n\nUpreg in situ is positive\n\n")
-ds_tpm_exp$EXP <- factor(ds_tpm_exp$EXP, levels = c("Tf", "insitu"))
+# Report
+cat("\nStarted with ", dim(ds_tpm)[1], "observations. Filtering by 2 samples and 10 counts resulted in,", dim(ds_tpm_filtered_0)[1], ", which is", (100*(dim(ds_tpm_filtered_0)[1]/dim(ds_tpm)[1])), "% of the data.\n\n")
 
-ds_output_exp <- DESeq2::DESeq(ds_tpm_exp)
-resultsNames(ds_output_exp)
-summary(ds_output_exp)
+cat("\n\nUpreg in site is positive\n\n")
+ds_tpm_output_filtered_est$FIELDYR <- factor(ds_tpm_output_filtered_est$FIELDYR, levels = c("Tf", "insitu")) # Change factors
 
-save(txi_mcr_tf_insitu, mcr_paired_tf, ds_tpm_exp, ds_output_exp, file = "/scratch/group/hu-lab/frenemies/MCR_byexp_DESeq.RData")
+ds_output_result <- DESeq2::DESeq(ds_tpm_output_filtered_est)
+resultsNames(ds_output_result)
+summary(ds_output_result)
+
+# Change naming schema
+byexp_type <- (data.frame(results(ds_output_field)) %>% 
+                 add_column(DESEQ = "Grazing vs. in situ") %>% 
+                 mutate(REGULATION = case_when(
+                   log2FoldChange > 0 ~ "upregulated in situ",
+                   log2FoldChange <= 0 ~ "upregulated in grazing Tf"
+                 )))
+
 
 ## Compile
-df_deseq_compiled <- (data.frame(ds_output_field) %>% 
-                        add_column(DESEQ = "Von Damm vs. Piccard") %>% 
-                        mutate(REGULATION = case_when(
-                          log2FoldChange > 0 ~ "upregulated in Von Damm",
-                          log2FoldChange < 0 ~ "upregulated in Piccard"
-                        ))) %>% 
-  bind_rows(data.frame(de_output_bin_type) %>% 
-              add_column(DESEQ = "Vent vs. non-vent") %>% 
-              mutate(REGULATION = case_when(
-                log2FoldChange > 0 ~ "upregulated in vent",
-                log2FoldChange < 0 ~ "upregulated in non-vent"
-              ))) %>% 
-  bind_rows(data.frame(ds_output_exp) %>% 
-              add_column(DESEQ = "Grazing vs. in situ") %>% 
-              mutate(REGULATION = case_when(
-                log2FoldChange > 0 ~ "upregulated in situ",
-                log2FoldChange < 0 ~ "upregulated in grazing Tf"
-              ))) %>% 
+df_deseq_compiled <- byfield %>% 
+  bind_rows(by_exptype) %>%
+  bind_rows(bybin_type) %>%
   rownames_to_column(var = "SequenceID") %>% 
-  SIGNIFICANT = case_when(
+  mutate(SIGNIFICANT = case_when(
     pvalue <= 0.05 ~ "Significantly",
     TRUE ~ "Not significantly"
-  )
+  ))
 
 stats_deseq <- df_deseq_compiled %>% 
   group_by(DESEQ, REGULATION, SIGNIFICANT) %>% 
   summarise(Total_num = n())
+# head(stats_deseq)
 
-write_delim(stats_deseq, file = "output/stats_deseq.txt", delim = "\t")
+write_delim(stats_deseq, file = "stats_deseq.txt", delim = "\t")
 
-save(df_deseq_compiled, stats_deseq, ds_output_exp, de_output_bin_type, ds_output_field, file ="/scratch/group/hu-lab/frenemies/DEseq_results_MCR.RData")
+save(df_deseq_compiled, stats_deseq, byfield, by_exptype, bybin_type, file ="/scratch/group/hu-lab/frenemies/DEseq_results_MCR.RData")
 
