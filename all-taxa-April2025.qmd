@@ -1,0 +1,749 @@
+---
+title: "all-taxa-vent-analysis"
+format: html
+editor: visual
+editor_options: 
+  chunk_output_type: inline
+---
+
+# Microbes Need Frenemies
+
+*Introduction to do* All taxa version.
+
+From `metat-analysis-eukrhythmic.qmd` to here. (April 2025)
+
+## Set up
+
+```{r, message=FALSE, warning=FALSE}
+# | message: false
+library(tidyverse)
+# library(DESeq2)
+library(ggdendro); library(ggalluvial); library(ggupset)
+library(treemapify)
+library(patchwork)
+library(compositions)
+library(vegan)
+library(pheatmap)
+```
+
+## Move HPC generated items locally
+
+Run `scripts/frenemies-compile-dfs-FEB.R`.
+
+Import long data frames of all data.
+
+```{r}
+load("input-docs/frenemies-longdfs-gr-mcr.RData", verbose = TRUE)
+```
+
+Subset Gorda Ridge and Mid-Cayman Rise hydrothermal vent metatranscriptome samples from the entire dataset. This section was run on HPC for subsetting. Estimated the mean of scaled TPM from tximport command. This is the correct TPM values that incorporate transcript length. When replicates were run across different flow cells (REP 1 vs. REP 2), these were averaged. Rownames equal the transcript IDs. Transcript IDs were joined with tax and function annotations.
+
+# Data curation
+
+Get an overview of what kind of data we have.
+
+```{r}
+head(long_frenemies_annot)
+```
+
+```{r}
+# table(long_frenemies_annot$SUPERGROUP_18S)
+unique(long_frenemies_annot$SUPERGROUP_18S)
+```
+
+## Ordering
+
+```{r}
+order_sample_names <- c("Von Damm_Vent_ArrowLoop", "Von Damm_Vent_Bartizan", "Von Damm_Vent_MustardStand", "Von Damm_Vent_OldManTree", "Von Damm_Vent_Ravelin2", "Von Damm_Vent_ShrimpHole", "Von Damm_Vent_WhiteCastle", "Von Damm_Vent_X18", "Von Damm_Non-vent_Plume", "Von Damm_Non-vent_Background", "Piccard_Vent_Lotsoshrimp", "Piccard_Vent_Shrimpocalypse", "Piccard_Non-vent_Plume", "Piccard_Non-vent_Background", "Gorda Ridge_Vent_Candelabra", "Gorda Ridge_Vent_MtEdwards", "Gorda Ridge_Vent_SirVentsAlot", "Gorda Ridge_Vent_VentiLatte", "Gorda Ridge_Non-vent_Plume", "Gorda Ridge_Non-vent_BSW")
+
+label_sample_names <- c("Von Damm Vent ArrowLoop", "Von Damm Vent Bartizan", "Von Damm Vent MustardStand", "Von Damm Vent OldManTree", "Von Damm Vent Ravelin2", "Von Damm Vent ShrimpHole", "Von Damm Vent WhiteCastle", "Von Damm Vent X18", "Von Damm Non-vent Plume", "Von Damm Non-vent Background", "Piccard Vent Lotsoshrimp", "Piccard Vent Shrimpocalypse", "Piccard Non-vent Plume", "Piccard Non-vent Background", "Gorda Ridge Vent Candelabra", "Gorda Ridge Vent MtEdwards", "Gorda Ridge Vent SirVentsAlot", "Gorda Ridge Vent VentiLatte", "Gorda Ridge Non-vent Plume", "Gorda Ridge Non-vent BSW")
+
+label_sample_names_SHORT <- c("ArrowLoop", "Bartizan", "MustardStand", "OldManTree", "Ravelin2", "ShrimpHole", "WhiteCastle", "X18", "Plume", "Background", "Lotsoshrimp", "Shrimpocalypse", "Plume", "Background", "Candelabra", "MtEdwards", "SirVentsAlot", "VentiLatte", "Plume", "BSW")
+
+order_field <- c("Von Damm", "Piccard", "Gorda Ridge")
+color_field <- c("#B56576", "#355070", "#EAAC8B")
+order_bin <- c("Vent", "Non-vent")
+color_bin <- c("#070600", "#DDDDDD")
+```
+
+
+## Taxonomic curation
+
+The column `SUPERGROUP_18S` is close to the 18S rRNA gene tag-sequencing results to help us draw conclusions regarding the comparison. 
+
+This curation will be easier for visualizing taxonomic results.
+
+```{r}
+tax_tmp <- long_frenemies_annot %>% 
+  filter(Domain == "Eukaryota") %>% 
+  select(classification_level, full_classification, 
+         Domain, Supergroup, Phylum, Class, Order, Family, Genus_spp, classification) %>% 
+  distinct()
+View(tax_tmp %>% filter(Supergroup != "Alveolata"))
+```
+
+Pair taxonomic classification with full_classification.
+```{r}
+myzozoa <- c("Perkinsea", "Chromerida", "Colpodellida", "Colponemidia", "Apicomplexa", "Squirmida") # at phylum
+
+long_frenemies_annot_tax <- long_frenemies_annot %>% 
+  filter(Domain == "Eukaryota") %>% 
+  # Alveolata
+  mutate(SUPERGROUP_PHYLUM = case_when(
+    (is.na(Supergroup)) ~ "Unannotated eukaryote",
+    # Alveolata
+    (Supergroup == "Alveolata" & (is.na(Phylum) | Phylum == "Alveolata_X")) ~ "Alveolata-Unannotated",
+    (Supergroup == "Alveolata" & Order == "Syndiniales") ~ "Alveolata-Syndiniales",
+    Phylum %in% myzozoa ~ "Alveolata-Myzozoa",
+    (grepl("_X", Phylum) | is.na(Phylum)) ~ paste(Supergroup, "Unannotated", sep = "-"),
+    Supergroup == "Rhodelphea" ~ "Archaeplastida-Rhodelphea",
+    Phylum == "Marine_stramenopiles_MASTs group" ~ "Stramenopiles-MAST",
+    Supergroup == "Eukaryota incertae sedis" ~ Phylum,
+    #
+    TRUE ~ paste(Supergroup, Phylum, sep = "-"))
+    ) %>%
+  ### Continued
+  mutate(SUPERGROUP_0 = case_when(
+    grepl("Alveolata-", SUPERGROUP_PHYLUM) ~ SUPERGROUP_PHYLUM,
+    SUPERGROUP_PHYLUM == "Unannotated eukaryote" ~ "Unannotated eukaryote",
+    TRUE ~ str_split_i(SUPERGROUP_PHYLUM, "-", 1))) %>%
+  ###
+  mutate(SUPERGROUP_PHYLUM_2 = case_when(
+    # Dinoflagellates
+    (SUPERGROUP_PHYLUM == "Alveolata-Dinophyta" & (is.na(Class) | is.na(Order) | grepl("SG_", Order))) ~ "Dinophyta-Unannotated",
+    SUPERGROUP_PHYLUM == "Alveolata-Dinophyta" ~ paste("Dinophyta-", Order, sep = ""),
+    # Ciliates
+    (SUPERGROUP_PHYLUM == "Alveolata-Ciliophora" & (is.na(Class) | is.na(Order) | grepl("SG_", Order))) ~ "Ciliophora-Unannotated",
+    SUPERGROUP_PHYLUM == "Alveolata-Ciliophora" ~ paste("Ciliophora-", Class, sep = ""),
+    # Myzozoa
+    (SUPERGROUP_PHYLUM == "Alveolata-Myzozoa" & (is.na(Class) | is.na(Order) | grepl("SG_", Order))) ~ "Myzozoa-Unannotated",
+    SUPERGROUP_PHYLUM == "Alveolata-Myzozoa" & Phylum %in% myzozoa ~ paste("Myzozoa-", Phylum, sep = ""),
+    ))
+
+unique(check_alv$SUPERGROUP_PHYLUM)
+unique(check_alv$SUPERGROUP_0)
+
+unique((filter(check_alv, Supergroup == "Alveolata"))$SUPERGROUP_PHYLUM)
+
+unique((filter(check_alv, SUPERGROUP_PHYLUM == "Alveolata-Myzozoa"))$Class)
+
+# unique((filter(check_alv, SUPERGROUP_PHYLUM == "Alveolata-Myzozoa"))$SUPERGROUP_PHYLUM_2)
+```
+
+
+## Functional categories
+
+Previously curated and parsed KEGG ID table. Note that KEGG IDs are often duplicated as the orthology information is repeated and individual KEGGs belong to different kinds of
+
+```{r}
+kegg <- read.csv("../KEGG_DB/combined_kegg.csv") %>% 
+  select(KEGG = KO_number, everything(), -X)
+
+curated_kegg <- read.csv("../KEGG_DB/kegg_curation_SKHU_Oct2024.csv", na.strings = "NA")
+
+# Join to include all KEGG IDs and curated list.
+kegg_key <- kegg %>% 
+  distinct() %>% 
+  left_join(curated_kegg, multiple = "all", by = join_by(KEGG)) 
+```
+
+```{r}
+kegg_seq_id <- long_frenemies_annot %>% 
+  filter(Domain == "Eukaryota") %>% 
+  select(SEQ_ID, PFAMs, KEGG) %>% distinct() %>% 
+  separate_longer_delim(KEGG, delim = ",") %>%
+  mutate(KEGG = str_remove_all(KEGG, "ko:")) %>% 
+  left_join(kegg_key)
+# head(kegg_seq_id)
+```
+Use `kegg_seq_id` below to introduce functional comparisons.
+
+# Big picture overview of data
+
+## Pairwise comparison of samples
+
+First make a numeric matrix.
+
+```{r}
+# head(long_frenemies_annot)
+# range(long_frenemies_annot$scaledTPM)
+wide_frenemies_all <- long_frenemies_annot %>% 
+  filter(Domain == "Eukaryota") %>% 
+  # filter(scaledTPM > 1e-4) %>%
+  # sample_n(10000) %>%
+  filter(SUPERGROUP_18S != "Unknown Eukaryota") %>% 
+  unite(SAMPLE_ID, VENT_BIN, VENT_FIELD, LOCATION, sep = "_") %>% 
+  unite(FXN_INFO, SUPERGROUP_18S, KEGG, PFAMs, sep = "_") %>% 
+  group_by(SAMPLE_ID, FXN_INFO) %>% 
+    summarise(SUM_TPM = sum(scaledTPM)) %>% 
+  pivot_wider(names_from = SAMPLE_ID, values_from = SUM_TPM, values_fill = 0) %>% 
+  column_to_rownames(var = "FXN_INFO") %>% 
+  as.matrix
+
+# glimpse(wide_frenemies_all)
+# tmp <- data.frame(wide_frenemies_all) %>% as.matrix
+```
+
+Standardization methods using `decostand`.
+
+```{r}
+# ?decostand
+# range(tmp)
+CLR_metaT <- decostand(wide_frenemies_all, method = "rclr", MARGIN = 2)
+range(CLR_metaT)
+hist(CLR_metaT)
+
+# Normalize - margin of sum squares
+normed_metat <- decostand(tmp, method = "normalize", MARGIN = 1)
+range(normed_metat)
+hist(normed_metat)
+# colSums(data.frame(normed_metat))
+# rowSums(data.frame(normed_metat))
+```
+
+```{r}
+# ?dist()
+dist_clr_metat <- stats::dist(t(CLR_metaT), method = "euclidean")
+# dist_clr_metat
+# range(dist_clr_metat)
+```
+
+
+```{r}
+# ?dist()
+dist_norm_metat <- stats::dist(t(normed_metat), method = "euclidean")
+class(dist_norm_metat)
+range(dist_norm_metat)
+matrix_dist_norm <- as.matrix(dist_norm_metat)
+```
+
+Deconstruct distance matrix and plot.
+```{r, fig.height=5, fig.width=6}
+yl_blue <- c("#e0f3db", "#a8ddb5", "#4eb3d3", "#08589e")
+
+as.data.frame(matrix_dist_norm) %>% 
+  rownames_to_column(var = "SAMPLE_X") %>% 
+  pivot_longer(cols = -c(SAMPLE_X), names_to = "SAMPLE_Y", values_to = "VALUE") %>% 
+  separate(SAMPLE_X, c("VENT_BIN", "VENT_FIELD", "LOCATION"), sep = "_", remove = FALSE) %>% 
+  mutate(VENT_BIN = str_replace(VENT_BIN, "\\.", " "),
+         VENT_FIELD = str_replace(VENT_FIELD, "\\.", " ")) %>% 
+  ggplot(aes(x = SAMPLE_X, y = SAMPLE_Y, fill = VALUE)) +
+  geom_tile(stat = "identity", color = "white", lwd = 0.75) +
+  scale_fill_gradientn(colors = yl_blue) +
+  # facet_grid(rows = vars(VENT_BIN), cols = vars(VENT_BIN),  space = "free", scales = "free") +
+  theme_classic() +
+  theme(legend.title = element_blank(),
+    axis.text.x = element_text(angle = 90, color = "black"),
+    axis.text.y = element_text(color = "black")) +
+  labs(x = "", y = "")
+# ?geom_tile()
+```
+
+## Pheatmap
+
+### By taxonomic groups
+
+```{r}
+head(long_frenemies_annot_tax)
+# unique(long_frenemies_annot$Domain)
+```
+
+
+```{r}
+wide_frenemies_taxa <- long_frenemies_annot_tax %>%
+  filter(Domain == "Eukaryota") %>% 
+  unite(SAMPLE_ID, VENT_BIN, VENT_FIELD, LOCATION, sep = "_") %>%
+  group_by(SAMPLE_ID, SUPERGROUP_PHYLUM) %>%
+    summarise(SUM_TPM = sum(scaledTPM)) %>%
+  pivot_wider(names_from = SAMPLE_ID, values_from = SUM_TPM, values_fill = 0) %>% 
+  column_to_rownames(var = "SUPERGROUP_PHYLUM") %>%
+  as.matrix
+
+clr_wide_frenemies_taxa <- decostand(wide_frenemies_taxa, method = "rclr", MARGIN = 1)
+# range(rank_wide_frenemies_taxa)
+# hist(rank_wide_frenemies_taxa)
+```
+
+```{r}
+col_guide <- data.frame(colnames(clr_wide_frenemies_taxa))
+colnames(col_guide) <- "orig"
+col_guide <- col_guide %>% 
+  separate(orig, into = c("VENT_BIN", "VENT_FIELD", "LOCATION"), sep = "_", remove = FALSE) %>% 
+  select(-LOCATION) %>% 
+  column_to_rownames(var = "orig")
+
+row_guide <- data.frame(rownames(clr_wide_frenemies_taxa))
+# row_guide
+colnames(row_guide) <- "SUPERGROUP_PHYLUM"
+row_guide <- row_guide %>% 
+  mutate(Supergroup = case_when(
+    SUPERGROUP_PHYLUM == "Unannotated eukaryote" ~ "Unannotated eukaryote",
+    TRUE ~ str_split_i(SUPERGROUP_PHYLUM, "-", 1))) %>% 
+  column_to_rownames(var = "SUPERGROUP_PHYLUM")
+
+head(col_guide)
+head(row_guide)
+```
+
+
+```{r, fig.height=10, fig.width=10}
+pheatmap(clr_wide_frenemies_taxa, scale = "row",
+         cluster_rows = F, cluster_cols = T, # set to FALSE if you want to remove the dendograms
+         clustering_distance_cols = 'euclidean',
+         clustering_distance_rows = 'euclidean',
+         clustering_method = 'complete',
+         annotation_row = row_guide,
+         annotation_col = col_guide, 
+         border_color = "white",
+         cutree_cols = 3)
+#  'ward', 'ward.D', 'ward.D2', 'single', 'complete', 'average', 'mcquitty', 'median' or 'centroid'.
+# ?hclust()
+```
+> set the above up with color bar by supergroup?
+
+### By functional category
+
+```{r}
+head(long_frenemies_annot)
+head(kegg_seq_id)
+head(unique(long_frenemies_annot$KEGG))
+```
+
+
+```{r}
+wide_frenemies_fxn <- long_frenemies_annot %>%
+  filter(Domain == "Eukaryota") %>% 
+  # filter(Supergroup != "Opisthokonta") %>% 
+  separate_longer_delim(KEGG, delim = ",") %>%
+  mutate(KEGG = str_remove_all(KEGG, "ko:")) %>% 
+  left_join(kegg_seq_id) %>% 
+  filter(KEGG != "-" | !is.na(KEGG)) %>% 
+  filter(!is.na(Supergroup)) %>% 
+  distinct() %>% 
+  # filter(SUPERGROUP_18S != "Unknown Eukaryota") %>%
+  unite(SAMPLE_ID, VENT_BIN, VENT_FIELD, LOCATION, sep = "_") %>%
+  unite(FXN, C, sep = "_", remove = FALSE) %>% 
+  group_by(SAMPLE_ID, FXN) %>%
+    summarise(SUM_TPM = sum(scaledTPM)) %>%
+  pivot_wider(names_from = SAMPLE_ID, values_from = SUM_TPM, values_fill = 0) %>% 
+  column_to_rownames(var = "FXN") %>%
+  as.matrix
+
+# glimpse(wide_frenemies_fxn)
+rank_wide_frenemies_fxn <- decostand(wide_frenemies_fxn, method = "rclr", MARGIN = 1)
+range(rank_wide_frenemies_fxn)
+
+```
+
+```{r, fig.height=10, fig.width=10}
+pheatmap(rank_wide_frenemies_fxn, scale = "column",
+         cluster_rows = F, cluster_cols = T, # set to FALSE if you want to remove the dendograms
+         clustering_distance_cols = 'euclidean',
+         # clustering_distance_rows = 'euclidean',
+         clustering_method = 'average',
+         border_color = "black",
+         cutree_cols = 2)
+
+# ?hclust()
+```
+Repeat with carbohydrate lipid metabolism subset to Supergroup.
+
+```{r}
+unique(long_frenemies_annot_tax$SUPERGROUP_PHYLUM)
+```
+
+```{r}
+# head(long_frenemies_annot)
+# range(long_frenemies_annot$scaledTPM)
+wide_frenemies_Bsupergroup <- long_frenemies_annot %>%
+  filter(Domain == "Eukaryota") %>% 
+  filter(Supergroup != "Opisthokonta") %>% 
+  separate_longer_delim(KEGG, delim = ",") %>%
+  mutate(KEGG = str_remove_all(KEGG, "ko:")) %>% 
+  left_join(kegg_seq_id) %>% 
+  filter(KEGG != "-" | !is.na(KEGG)) %>% 
+  filter(B == "Carbohydrate and lipid metabolism") %>% 
+  filter(!is.na(Supergroup)) %>% 
+  filter(SUPERGROUP_18S != "Unknown Eukaryota") %>% 
+  filter(Supergroup != "Eukaryota incertae sedis") %>% 
+  distinct() %>% 
+  # filter(SUPERGROUP_18S != "Unknown Eukaryota") %>%
+  unite(SAMPLE_ID, VENT_BIN, VENT_FIELD, LOCATION, sep = "_") %>%
+  unite(SUPERGROUP_FXN, SUPERGROUP_18S, C, sep = "_", remove = FALSE) %>%
+  # unite(SUPERGROUP_FXN, Supergroup, C, sep = "_", remove = FALSE) %>% 
+  group_by(SAMPLE_ID, SUPERGROUP_FXN) %>%
+    summarise(SUM_TPM = sum(scaledTPM)) %>%
+  pivot_wider(names_from = SAMPLE_ID, values_from = SUM_TPM, values_fill = 0) %>% 
+  column_to_rownames(var = "SUPERGROUP_FXN") %>%
+  as.matrix
+# unique(wide_frenemies_Bsupergroup$Supergroup)
+# glimpse(wide_frenemies_fxn)
+rank_wide_frenemies_supergroupfxn <- decostand(wide_frenemies_Bsupergroup, method = "rclr")
+range(rank_wide_frenemies_supergroupfxn)
+```
+```{r}
+col_guide <- data.frame(colnames(rank_wide_frenemies_supergroupfxn))
+colnames(col_guide) <- "orig"
+col_guide <- col_guide %>% 
+  separate(orig, into = c("VENT_BIN", "VENT_FIELD", "LOCATION"), sep = "_", remove = FALSE) %>% 
+  select(-LOCATION) %>% 
+  column_to_rownames(var = "orig")
+
+row_guide <- data.frame(rownames(rank_wide_frenemies_supergroupfxn))
+colnames(row_guide) <- "orig"
+row_guide <- row_guide %>% 
+  separate(orig, into = c("Supergroup", "FXN_C"), sep = "_", remove = FALSE) %>% 
+  column_to_rownames(var = "orig")
+
+head(col_guide)
+head(row_guide)
+```
+
+
+```{r, fig.height=10, fig.width=10}
+pheatmap(rank_wide_frenemies_supergroupfxn, scale = "row",
+         cluster_rows = F, cluster_cols = T, # set to FALSE if you want to remove the dendograms
+         # clustering_distance_cols = 'euclidean',
+         clustering_distance_rows = 'euclidean',
+         clustering_method = 'complete',
+         border_color = "black",
+         cutree_cols = 2,
+         # color = inferno(10),
+  # border_color      = NA,
+  show_colnames     = FALSE,
+  # show_rownames     = FALSE,
+  annotation_col    = col_guide,
+  annotation_row = row_guide)
+  # annotation_colors = mat_colors,
+  # drop_levels       = TRUE,)
+
+# ?hclust()
+```
+
+# Environmental metaata
+
+# Plot environmental parameters
+
+Use the key_sample dataframe as an outline to plot each tile plot. Environmental parameters will be shown as a heat map.
+
+```{r, fig.height=6, fig.width=10}
+bin <- key_sample %>% 
+  # filter(VENT_FIELD != "Gorda Ridge") %>% 
+  ggplot(aes(x = SAMPLE_NAME_ORDER_label, y = 0, fill = BIN_ORDER)) +
+  scale_fill_manual(values = color_bin) + 
+  geom_tile(color = "black", linewidth = 0.5) +
+  # coord_flip() +
+  theme_classic() +
+  labs(x = "", y = "") +
+  facet_grid(cols = vars(BIN_ORDER, FIELD_ORDER), space = "free", scales = "free") +
+  scale_x_discrete(expand = c(0,0)) +
+  theme(axis.line = element_blank(),
+        axis.ticks = element_blank(),
+        axis.text.y = element_blank(),
+        axis.text.x = element_text(color = "black", face = "bold", angle = 90, hjust = 1, vjust = 0.5),
+        legend.position = "right", legend.title = element_blank(),
+        margin(t=0, r=0, b=0,l=0))
+
+field <- key_sample %>% 
+  # filter(VENT_FIELD != "Gorda Ridge") %>% 
+  ggplot(aes(x = SAMPLE_NAME_ORDER_label, y = 0, fill = FIELD_ORDER)) +
+  scale_fill_manual(values = color_field) + 
+  geom_tile(color = "black", linewidth = 0.5) +
+  # coord_flip() +
+  theme_classic() +
+  labs(x = "", y = "") +
+  facet_grid(cols = vars(BIN_ORDER, FIELD_ORDER), space = "free", scales = "free") +
+  scale_x_discrete(expand = c(0,0)) +
+  theme(axis.line = element_blank(),
+        axis.ticks = element_blank(),
+        axis.text.y = element_blank(),
+        axis.text.x = element_text(color = "black", face = "bold", angle = 90, hjust = 1, vjust = 0.5),
+        legend.position = "right", legend.title = element_blank(),
+        margin(t=0, r=0, b=0,l=0))
+
+
+# bin + field + patchwork::plot_layout(nrow = 2)
+# ggsave("figures/categories.pdf", width = 7, height = 9, device = "pdf", limitsize = FALSE)
+```
+
+## Geochemical heatmap metadata
+
+```{r, fig.height=9, fig.width=10}
+temp <- metadata_metaT %>% 
+  filter(VARIABLES == "TEMP") %>% 
+  ggplot(aes(x = SAMPLE_NAME_ORDER_label, y = VARIABLES, fill = VALUE)) +
+  geom_tile(stat = "identity", linewidth = 0.5, color = "black") +
+  scale_fill_gradient(low = "#fee0d2", high = "#cb181d") +
+  theme_classic() +
+  labs(x = "", y = "") +
+  facet_grid(cols = vars(BIN_ORDER, FIELD_ORDER), space = "free", scales = "free") +
+  scale_x_discrete(expand = c(0,0)) +
+  theme(axis.line = element_blank(),
+        axis.ticks = element_blank(),
+        axis.text.y = element_blank(),
+        axis.text.x = element_text(color = "black", face = "bold", angle = 90, hjust = 1, vjust = 0.5),
+        legend.position = "right", legend.title = element_blank(),
+        margin(t=0, r=0, b=0,l=0))
+# 
+ph <- metadata_metaT %>% 
+    filter(VARIABLES == "pH") %>% 
+  ggplot(aes(x = SAMPLE_NAME_ORDER_label, y = VARIABLES, fill = VALUE)) +
+  geom_tile(stat = "identity", linewidth = 0.5, color = "black") +
+  scale_fill_gradient(low = "#fee0d2", high = "#cb181d") +
+  theme_classic() +
+  labs(x = "", y = "") +
+  facet_grid(cols = vars(BIN_ORDER, FIELD_ORDER), space = "free", scales = "free") +
+  scale_x_discrete(expand = c(0,0)) +
+  theme(axis.line = element_blank(),
+        axis.ticks = element_blank(),
+        axis.text.y = element_blank(),
+        axis.text.x = element_text(color = "black", face = "bold", angle = 90, hjust = 1, vjust = 0.5),
+        legend.position = "right", legend.title = element_blank(),
+        margin(t=0, r=0, b=0,l=0))
+# 
+methane <- metadata_metaT %>% 
+    filter(VARIABLES == "CH4") %>% 
+  ggplot(aes(x = SAMPLE_NAME_ORDER_label, y = VARIABLES, fill = VALUE)) +
+  geom_tile(stat = "identity", linewidth = 0.5, color = "black") +
+  scale_fill_gradient(low = "#fee0d2", high = "#cb181d") +
+  theme_classic() +
+  labs(x = "", y = "") +
+  facet_grid(cols = vars(BIN_ORDER, FIELD_ORDER), space = "free", scales = "free") +
+  scale_x_discrete(expand = c(0,0)) +
+  theme(axis.line = element_blank(),
+        axis.ticks = element_blank(),
+        axis.text.y = element_blank(),
+        axis.text.x = element_text(color = "black", face = "bold", angle = 90, hjust = 1, vjust = 0.5),
+        legend.position = "right", legend.title = element_blank(),
+        margin(t=0, r=0, b=0,l=0))
+  # patchwork::plot_layout(nrow = 3)
+# ?ggsave()
+# ggsave("figures/heatmap-env-params.pdf", width = 10, height = 9, device = "pdf", limitsize = FALSE)
+```
+
+## Biological heatmap metadata
+
+```{r, fig.height=9, fig.width=10}
+prok <- metadata_metaT %>% 
+  filter(VARIABLES == "ProkConc") %>% 
+  ggplot(aes(x = SAMPLE_NAME_ORDER_label, y = VARIABLES, fill = VALUE)) +
+  geom_tile(stat = "identity", linewidth = 0.5, color = "black") +
+  scale_fill_gradient(low = "#c6dbef", high = "#08306b") +
+  # coord_flip() +
+  theme_classic() +
+  labs(x = "", y = "") +
+  facet_grid(cols = vars(BIN_ORDER, FIELD_ORDER), space = "free", scales = "free") +
+  scale_x_discrete(expand = c(0,0)) +
+  theme(axis.line = element_blank(),
+        axis.ticks = element_blank(),
+        axis.text.y = element_blank(),
+        axis.text.x = element_text(color = "black", face = "bold", angle = 90, hjust = 1, vjust = 0.5),
+        legend.position = "right", legend.title = element_blank(),
+        margin(t=0, r=0, b=0,l=0))
+
+euk <- metadata_metaT %>% 
+  filter(VARIABLES == "EukConc") %>% 
+  ggplot(aes(x = SAMPLE_NAME_ORDER_label, y = VARIABLES, fill = VALUE)) +
+  geom_tile(stat = "identity", linewidth = 0.5, color = "black") +
+  scale_fill_gradient(low = "#c6dbef", high = "#08306b") +
+  theme_classic() +
+  labs(x = "", y = "") +
+  facet_grid(cols = vars(BIN_ORDER, FIELD_ORDER), space = "free", scales = "free") +
+  scale_x_discrete(expand = c(0,0)) +
+  theme(axis.line = element_blank(),
+        axis.ticks = element_blank(),
+        axis.text.y = element_blank(),
+        axis.text.x = element_text(color = "black", face = "bold", angle = 90, hjust = 1, vjust = 0.5),
+        legend.position = "right", legend.title = element_blank(),
+        margin(t=0, r=0, b=0,l=0))
+
+graze <- metadata_metaT %>% 
+  filter(VARIABLES == "GrazingEffect_hr") %>% 
+  ggplot(aes(x = SAMPLE_NAME_ORDER_label, y = VARIABLES, fill = VALUE)) +
+  geom_tile(stat = "identity", linewidth = 0.5, color = "black") +
+  scale_fill_gradient(low = "#c6dbef", high = "#08306b") +
+  theme_classic() +
+  labs(x = "", y = "") +
+  facet_grid(cols = vars(BIN_ORDER, FIELD_ORDER), space = "free", scales = "free") +
+  scale_x_discrete(expand = c(0,0)) +
+  theme(axis.line = element_blank(),
+        axis.ticks = element_blank(),
+        axis.text.y = element_blank(),
+        axis.text.x = element_text(color = "black", face = "bold", angle = 90, hjust = 1, vjust = 0.5),
+        legend.position = "right", legend.title = element_blank(),
+        margin(t=0, r=0, b=0,l=0))
+
+# ggsave("figures/heatmap-biol-params_2.pdf", width = 10, height = 9, device = "pdf", limitsize = FALSE)
+```
+
+```{r, fig.height=18.5, fig.width=10}
+bin + field + temp + ph + methane + prok + euk + graze +
+  patchwork::plot_layout(ncol = 1)
+# ggsave("figures/heatmap-biogeochem.pdf", width = 10, height = 18.5, device = "pdf", limitsize = FALSE)
+```
+
+
+# UpSetR plots
+
+Summarize data to just KEGG IDs and then to just taxonomic IDs. What is shared across vent, non-vent, all vent fields?
+Prepare data frame for upset input.
+
+```{r}
+# head(long_frenemies_annot$full_classification)
+```
+
+
+```{r}
+upset_input_kegg <- long_frenemies_annot %>%
+  # Remove NAs
+  filter(!(KEGG == "-" | KEGG == " ")) %>% 
+  filter(!is.na(KEGG)) %>% 
+  group_by(VENT_BIN, VENT_FIELD, KEGG) %>% 
+    summarise(SUM = sum(scaledTPM)) %>%
+  distinct()
+  
+upset_input_taxa <- long_frenemies_annot %>%
+  # Remove NAs
+  filter(!(full_classification == "-" | full_classification == " ")) %>% 
+  filter(!is.na(full_classification)) %>% 
+  group_by(VENT_BIN, VENT_FIELD, full_classification) %>% 
+    summarise(SUM = sum(scaledTPM)) %>%
+  distinct()
+
+# Combo
+upset_input_combo <- long_frenemies_annot %>%
+  # Remove NAs
+  filter(!(full_classification == "-" | full_classification == " ")) %>% 
+  filter(!is.na(full_classification)) %>% 
+  filter(!(KEGG == "-" | KEGG == " ")) %>% 
+  filter(!is.na(KEGG)) %>% 
+  group_by(VENT_BIN, VENT_FIELD, KEGG) %>% 
+  group_by(VENT_BIN, VENT_FIELD, KEGG, full_classification) %>% 
+    summarise(SUM = sum(scaledTPM)) %>%
+  distinct()
+```
+
+### KEGGs
+
+```{r, fig.height=5, fig.width=10}
+upset_input_kegg %>%
+  unite(field_bin, c(VENT_FIELD, VENT_BIN), sep = " ") %>%
+  group_by(KEGG) %>%
+    summarise(SAMPLE = list(field_bin)) %>%
+  ggplot(aes(x = SAMPLE)) +
+    geom_bar(color = "#5c6e6c", fill = "#a6b7aa", width = 0.7) +
+    ggupset::scale_x_upset(order_by = "freq", n_intersections = 15) +
+    scale_y_continuous(expand = c(0,0)) +
+    labs(x = "", y = "Shared transcripts", title = "Distribution of KEGG identities") +
+    theme_classic() +
+  theme(plot.margin = margin(2, 0, 0, 2, "cm"),
+        axis.text = element_text(color = "black", face = "bold", size = 13),
+        axis.title = element_text(color = "black", face = "bold", size = 13)) +
+  theme_combmatrix(combmatrix.label.text = element_text(color = "black", face = "bold", size = 13),
+                     combmatrix.label.extra_spacing = 3)
+# ggsave("figures/upset_simple_taxa.svg", width = 10, height = 5, device = "svg", limitsize = FALSE)
+```
+
+### Taxa
+
+```{r, fig.height=5, fig.width=10}
+upset_input_taxa %>%
+  unite(field_bin, c(VENT_FIELD, VENT_BIN), sep = " ") %>%
+  group_by(full_classification) %>%
+    summarise(SAMPLE = list(field_bin)) %>%
+  ggplot(aes(x = SAMPLE)) +
+    geom_bar(color = "#5c6e6c", fill = "#a6b7aa", width = 0.7) +
+    ggupset::scale_x_upset(order_by = "freq", n_intersections = 15) +
+    scale_y_continuous(expand = c(0,0)) +
+    labs(x = "", y = "Shared transcripts", title = "Distribution of taxonomic identities") +
+    theme_classic() +
+  theme(plot.margin = margin(2, 0, 0, 2, "cm"),
+        axis.text = element_text(color = "black", face = "bold", size = 13),
+        axis.title = element_text(color = "black", face = "bold", size = 13)) +
+  theme_combmatrix(combmatrix.label.text = element_text(color = "black", face = "bold", size = 13),
+                     combmatrix.label.extra_spacing = 3)
+# ggsave("figures/upset_simple_taxa.svg", width = 10, height = 5, device = "svg", limitsize = FALSE)
+```
+
+### Combo
+
+```{r}
+# 
+upset_input_combo %>%
+  unite(field_bin, c(VENT_FIELD, VENT_BIN), sep = " ") %>%
+  unite(COMBO, c(KEGG, full_classification), sep = " ") %>%
+  group_by(COMBO) %>%
+    summarise(SAMPLE = list(field_bin)) %>%
+  ggplot(aes(x = SAMPLE)) +
+    geom_bar(color = "#5c6e6c", fill = "#a6b7aa", width = 0.7) +
+    ggupset::scale_x_upset(order_by = "freq", n_intersections = 15) +
+    scale_y_continuous(expand = c(0,0)) +
+    labs(x = "", y = "Shared transcripts", title = "Distribution of taxonomic identities") +
+    theme_classic() +
+  theme(plot.margin = margin(2, 0, 0, 2, "cm"),
+        axis.text = element_text(color = "black", face = "bold", size = 13),
+        axis.title = element_text(color = "black", face = "bold", size = 13)) +
+  theme_combmatrix(combmatrix.label.text = element_text(color = "black", face = "bold", size = 13),
+                     combmatrix.label.extra_spacing = 3)
+# ggsave("figures/upset_simple_taxa.svg", width = 10, height = 5, device = "svg", limitsize = FALSE)
+```
+
+# Taxonomic overview
+
+```{r}
+head(long_frenemies_annot_tax)
+```
+
+## Domain
+```{r}
+tax_domain_supergroup <- long_frenemies_annot %>% 
+  group_by(SUPERGROUP_18S, Domain, Supergroup, LOCATION, VENT_FIELD, VENT_BIN) %>%
+    summarise(SUM_TPM = sum(scaledTPM))
+tax_domain_supergroup$Domain[tax_domain_supergroup$Domain == ""] <- NA
+```
+
+Plot domain across all samples.
+
+```{r, fig.height=5, fig.width=7}
+tax_domain_supergroup %>% 
+  mutate(Domain = replace_na(Domain, "No Domain"),
+         Domain = str_replace(Domain, "No supergroup", "No Domain")) %>% 
+  group_by(Domain, LOCATION, VENT_FIELD, VENT_BIN) %>% 
+  summarise(SUM_BY_DOMAIN = sum(SUM_TPM)) %>% 
+  mutate(
+         field_ORDER = factor(VENT_FIELD, levels = order_field),
+         bin_ORDER = factor(VENT_BIN, levels = order_bin)) %>% 
+  ggplot(aes(x = LOCATION, y = SUM_BY_DOMAIN, fill = Domain)) +
+    geom_bar(stat = "identity", color = "black") +
+    facet_grid(cols = vars(field_ORDER), scales = "free_x", space = "free") +
+  theme_classic() +
+  scale_y_continuous(expand = c(0,0)) +
+  theme(legend.position = "right", legend.title = element_blank(),
+        strip.text.x = element_text(color = "black", face = "bold", size = 14),
+        strip.background = element_blank(),
+        # strip.placement = "outside",
+        axis.text.x = element_text(color = "black", face = "bold", size = 12, angle = 45, hjust = 1, vjust = 1),
+        axis.title = element_text(color = "black", face = "bold", size = 14),
+        axis.text.y = element_text(color = "black", face = "bold", size = 14),
+        panel.grid.major = element_line(color = "#d9d9d9", linewidth = 0.3)) +
+  labs(x = "", y = "TPM total")
+```
+
+## Supergroup
+
+```{r}
+head(long_frenemies_annot_tax)
+```
+
+```{r}
+
+```
+
+
+
+# Session Information
+
+```{r}
+sessionInfo()
+```
+

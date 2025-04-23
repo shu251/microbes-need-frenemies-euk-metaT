@@ -1,21 +1,24 @@
 ---
-title: "Frenemies-metaT-analysis"
+title: "Microbes need frenemies: ciliate life styles project"
 format: html
 editor: visual
 ---
 
-*last updated Sept 2024*
+*last updated ARCHIVE*
 
 # Introduction
 
-Code for running metatranscriptome analysis with [eukrhythmic](https://eukrhythmic.readthedocs.io/en/latest/index.html). Data originates from several vent sites for project 'Microbes need frenmies'.
-
+Code for running metatranscriptome analysis with [eukrhythmic](https://eukrhythmic.readthedocs.io/en/latest/index.html). Data originates from several vent sites for project 'Microbes need frenemies'.
 
 ## Set up environment
 
 ```{r}
-#| message: false
+# | warning: false
+# | message: false
 library(tidyverse)
+library(DESeq2)
+library(tximport)
+library(data.table)
 ```
 
 ## Create eukrhythmic sample list
@@ -28,7 +31,7 @@ sample_list <- read.csv("input-docs/frenemies-sample-list.csv")
 fastq_list <- read.csv("input-docs/frenemies-fastq-list.csv", header = FALSE)
 ```
 
-Fastq files were run on both lanes 1 and 2. So will treat as _technical_ replicates for now. Separate fastq_list file so we can left join the sample_list information.
+Fastq files were run on both lanes 1 and 2. So will treat as *technical* replicates for now. Separate fastq_list file so we can left join the sample_list information.
 
 For assembly groupings, we want diversity represented, but too much diversity may cause chimeric contigs. And if we put in too many reads, this can be a bottleneck for assembly (computationally).
 
@@ -82,6 +85,12 @@ table(sample_list_wassemblygroup$AssemblyGroup)
 # write_delim(sample_list_wassemblygroup %>% select(SampleName, SampleID, AssemblyGroup, FastqFile), file = "eukrhythmic-run/frenemies-metat-samplelist.txt", delim = "\t")
 ```
 
+# Running eukrhythmic
+
+> AKQ - need assistance here for additional instructions specific to this project for eukrhythmic. Including annotation stuff.
+
+Location on TAMU HPRC: `/scratch/group/hu-lab/frenemies`
+
 # Output from eukrhythmic
 
 -   Salmon count files, `quant.sf`.
@@ -89,377 +98,299 @@ table(sample_list_wassemblygroup$AssemblyGroup)
 
 > Specific steps taken to create the above?
 
-## Process with tximport
+## Process counts with tximport
 
 First run `scripts/create-samplelist.R`. This will output a sample list ready to be run with the tximport step.
 
-Then execute `scripts/run_tximport_frenemies.R`. This will import all salmon count files and process transcript length to get transcript-level estimates as counts. With slurm: `sbatch metaT-run-tximport.sm`.
+Then execute `scripts/run_tximport_frenemies.R`. This will import all salmon count files and process transcript length to get transcript-level estimates as counts. With slurm script: `sbatch metaT-run-tximport.sm`.
 
-Output from above is an RData object that includes the txi object. This txi object can be subset for downstream analysis. It also includes a sample list for the txi object so we can subset specific samples.
+Output from above includes 2 RData files. `tximport-feb-2025.RData` is a txi class objects for the MCR and GR data and `dfs_gr_mcr_feb2025.RData` has large dataframes with the TPM values from the txi objects.
 
-```
-/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/tximport-sept-2024.RData
-```
+File location:
 
-# Mid-Cayman Rise samples only
-
-The ```run_tximport_frenemies.R` script has code for executing all samples and then repeating the process for only samples from the Mid-Cayman Rise. 
-
-For all below analyses, use this, `tximport-MCR-sept-2024.RData`.
-
-## Get dataframes for MCR analysis
-
-Import all needed R Objects:
-
-```{r}
-library(DESeq2)
-library(tidyverse)
-library(tximport)
-library(data.table)
-
-load("/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/tximport-MCR-sept-2024.RData", verbose = TRUE)
-# txi_mcr and sample_merged_mcr
+```         
+#save(txi_frenemies_mcr_gr, sample_merged_gr_mcr, file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/tximport-feb-2025.RData")
+#save(lenscaled_TPM, gr_mcr_lenscaled_TPM_df, mean_gr_mcr_TPM_df, file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/dfs_gr_mcr_feb2025.RData")
 ```
 
-The goal is to get a table with samples that reflects the *lengthScaledTPM*. This is calculated using _tximport_, where the the within-gene summed TPM is multiplied by the average transcript length, averaged over samples, then scaled up to the per-sample library size. 
+The goal is to get a table with samples that reflects the *lengthScaledTPM*. This is calculated using *tximport*, where the the within-gene summed TPM is multiplied by the average transcript length, averaged over samples, then scaled up to the per-sample library size.
 
 The output can be treated as a *TPM* that has been corrected for differences in average transcript length across samples.
 
-On grace:
+# Process large count files
 
-How do I extract the correct TPM values?
-```{r}
-# mcr_length_scaled_TPM <- as.data.frame(txi_mcr$countsFromAbundance)
-mcr_lenscaled_TPM <- makeCountsFromAbundance(
-  as.matrix(txi_mcr$counts),
-  as.matrix(txi_mcr$abundance),
-  as.matrix(txi_mcr$length),
-  countsFromAbundance = "lengthScaledTPM"
-)
+From `dfs_gr_mcr_feb2025.RData` we need to create downstream files that can be more easily used in R locally.
 
-mcr_lenscaled_TPM_df <- as.data.frame(mcr_lenscaled_TPM)
-colnames(mcr_lenscaled_TPM_df)
-```
+## Align with annotation information
 
-## Get raw stats on scaled TPMs
+Use script `frenemies-compile-dfs_FEB.R`
 
 ```{r}
-# colnames(counts_df)
-```
-
-
-## Estimate across replicates
-
-Rename so replicates have the same name for counts
-
-```{r}
-counts_df <- mcr_lenscaled_TPM_df
-names_orig <- colnames(counts_df)
-names_new <- sub("_[^_]+$", "", names_orig)
-colnames(counts_df) <- names_new
-```
-
-Mean across columns that have the same name - which are replicates.
-
-```{r}
-counts_df <- mcr_lenscaled_TPM_df
-names_orig <- colnames(counts_df)
-names_new <- sub("_[^_]+$", "", names_orig)
-colnames(counts_df) <- names_new
-mean_counts_df <- counts_df %>%
-  cbind(as.list(.) %>%
-          Filter(is.numeric, .) %>%
-          split(names(.)) %>%
-          lapply(as.data.frame) %>%
-          lapply(rowMeans) %>%
-          setNames(paste0("mean.", names(.)))) %>%
-  select(starts_with("mean"))
-```
-
-Export for downstream analysis
-
-```{r}
-# glimpse(mean_counts_df)
-```
-
-```{r}
-# save(mean_counts_df, file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/all_samples_vent_metaT.RData")
-```
-
-
-# Isolate dataframes for MCR DESeq analysis
-
-Import libraries and RData object
-
-```{r}
-library(DESeq2)
-library(tidyverse)
-library(tximport)
+# Compile large datasets for use in R. 
 library(data.table)
+library(tximport)
+library(readr)
+library(tidyverse)
 
-load("/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/tximport-MCR-sept-2024.RData", verbose = TRUE)
-# txi_mcr and sample_merged_mcr
-```
+cat("Importing files\n")
+load("/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/dfs_gr_mcr_feb2025.RData", verbose = TRUE)
+# lenscaled_TPM, gr_mcr_lenscaled_TPM_df, mean_gr_mcr_TPM_df
 
-*Process*: Subset the txi object and gene IDs at the level you want to do the DESeq analysis. Use the _subsetTxi_ function to subset the data to a new txi file. Use this in the _DESeq_ package to get differential expression information.
-
-
-For the Mid-Cayman Rise analysis, I want to compare:
-
-1) Vent only samples from Piccard vs. Von Damm
-2) Vent only vs. non-vent samples
-3) _in situ_ vent only vs. shipboard grazing
-
-
-## Subset txi and gene IDs
-
-This code is derived from `subset-txi.R`. 
-
-Sample names are subset from the `sample_merged_mcr` file
-```{r}
-all_mcr <- sample_merged_mcr %>%
-  select(sample = SAMPLE_REP)
-
-vent_only_mcr <- sample_merged_mcr %>%
-  filter(EXP == "insitu") %>% 
-  filter(TYPE_BIN == "Vent") %>% 
-  select(sample = SAMPLE_REP)
-
-mcr_no_tf <- sample_merged_mcr %>% 
-  filter(EXP == "insitu") %>% 
-  select(sample = SAMPLE_REP)
-
-# Of all the samples at MCR, which have paired in situ vs. Tf?
-tmp_tf <- sample_merged_mcr %>% 
-  filter(SITE == "MCR") %>% 
-  # filter(VENT != "Background") %>% 
-  # filter(VENT != "Plume") %>% 
-  select(EXP, VENT) %>% 
-  add_column(VAR = 1) %>% 
-  pivot_wider(names_from = EXP, values_from = VAR, values_fn = sum) %>% 
-  drop_na()
-
-vent_wexperiments <- as.character(tmp_tf$VENT)
-
-mcr_paired_tf <- sample_merged_mcr %>% 
-  filter(VENT %in% vent_wexperiments) %>% 
-  select(sample = SAMPLE_REP)
-
-# mcr_paired_tf, mcr_no_tf, all_mcr, vent_only_mcr
-```
-
-Get geneIDs
-
-```{r}
 taxfxn <- read.table("/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/TaxonomicAndFunctionalAnnotations.csv", header = TRUE, sep = "\t")
 
 tx2gene_in <- taxfxn %>% 
+  separate_longer_delim(KEGG_ko, delim = ",") %>% # Remove comma separated KEGG IDs
+  select(SequenceID, seed_ortholog, COG_category, GOs, KEGG = KEGG_ko, PFAMs, classification_level, full_classification, classification, max_pid) %>% 
   dplyr::mutate(SEQ_ID = stringr::str_remove(SequenceID, ".p[:digit:]$"))
 
-all_transcripts <- as.character(tx2gene_in %>%
-                            select(transcript_name) %>% 
-                            .[["transcript_name"]])
-```
+cat("Modified taxfxn:\n")
+head(tx2gene_in)
+# head(rownames(mean_gr_mcr_TPM_df))
 
-Save R objects:
-```{r}
-save(mcr_paired_tf, mcr_no_tf, all_mcr, vent_only_mcr, all_transcripts, file = "/scratch/group/hu-lab/frenemies/mcr-txi-subset-objects.RData")
-```
+cat("Files imported.\n")
 
-#### Function to subset txi
+cat("View mean_gr_mcr_TPM_df\n\n")
+head(mean_gr_mcr_TPM_df)
 
-```{r}
-# Subset txi directly
-subsetTxi <- function(txi, samples, include_genes=rownames(txi$counts))
-{
-  genes <- rownames(txi$counts)[rownames(txi$counts) %in% include_genes]
-  txi$abundance <- txi$abundance[genes, samples$sample]
-  txi$counts <- txi$counts[genes, samples$sample]
-  txi$length <- txi$length[genes, samples$sample]
-  return(txi)
-}
-```
-
-### (1) Piccard vs. Von Damm
-
-Vent only samples from Piccard vs. Von Damm: use `vent_only_mcr` and FIELDYR
-```{r}
-txi_mcr_byfield <- subsetTxi(txi_mcr, vent_only_mcr, all_transcripts)
-# FIELDYR
-```
-
-DESeq import step
-```{r}
-# Import as DESeq object - use categories in the design
-# DESeq
-ds_tpm_field <- DESeqDataSetFromTximport(txi_mcr_byfield,
-                                            colData = vent_only_mcr,
-                                            design = ~0 + FIELDYR)
-## (Option)
-# Further process DESeq
-# groupsize <- 2 # Transcript to consider, must be in at least 3 samples
-# keep <- rowSums(counts(ds_tpm_output) >= 10) >= groupsize # And have >= to 10 counts  #
-# ds_tpm_output_filtered_0 <- ds_tpm_output[keep,]
-# ds_tpm_output_filtered <- estimateSizeFactors(ds_tpm_output_filtered_0, type = 'poscounts')
-# ###
-# Filtering stats:
-# cat("\nStarted with ", dim(ds_tpm_output)[1], "observations. Filtering by 2 samples and 10 counts resulted in,", dim(ds_tpm_output_filtered)[1], ", which is", (100*(dim(ds_tpm_output_filtered)[1]/dim(ds_tpm_output)[1])), "% of the data.\n\n")
-```
-
-```{r}
-## Positive log fold change == up regulated in ONE, compared to TWO
-# ds_tpm_output_filtered$TYPE <- factor(ds_tpm_output_filtered$TYPE, levels = c("TWO", "ONE"))
-cat("\n\nUpreg in Von Damm is positive\n\n")
-ds_tpm_field$FIELDYR <- factor(ds_tpm_field$FIELDYR, levels = c("Piccard2020", "VonDamm2020"))
-
-ds_output_field <- DESeq2::DESeq(ds_tpm_field)
-resultsNames(ds_output_field)
-summary(ds_output_field)
-```
-
-```{r}
-save(txi_mcr_byfield, vent_only_mcr, ds_tpm_field, ds_output_field, file = "/scratch/group/hu-lab/frenemies/MCR_byfield_DESeq.RData")
-```
-
-### (2) Vent only vs. non-vent
-
-Vent only vs. non-vent samples: use `mcr_no_tf` and TYPE_BIN
-```{r}
-txi_mcr_vent_nonvent <- subsetTxi(txi_mcr, mcr_no_tf, all_transcripts)
-```
-
-DESeq import step
-```{r}
-# Import as DESeq object - use categories in the design
-# DESeq
-ds_tpm_bin_type <- DESeqDataSetFromTximport(txi_mcr_vent_nonvent,
-                                            colData = mcr_no_tf,
-                                            design = ~0 + TYPE_BIN)
-## (Option)
-# Further process DESeq
-# groupsize <- 2 # Transcript to consider, must be in at least 3 samples
-# keep <- rowSums(counts(ds_tpm_output) >= 10) >= groupsize # And have >= to 10 counts  #
-# ds_tpm_output_filtered_0 <- ds_tpm_output[keep,]
-# ds_tpm_output_filtered <- estimateSizeFactors(ds_tpm_output_filtered_0, type = 'poscounts')
-# ###
-# Filtering stats:
-# cat("\nStarted with ", dim(ds_tpm_output)[1], "observations. Filtering by 2 samples and 10 counts resulted in,", dim(ds_tpm_output_filtered)[1], ", which is", (100*(dim(ds_tpm_output_filtered)[1]/dim(ds_tpm_output)[1])), "% of the data.\n\n")
-```
+cat("Pivot to long format:\n")
+# Make longer data frame
+long_frenemies <- mean_gr_mcr_TPM_df %>%
+  rowwise() %>%
+  # Add column with number of samples with a 0.
+  mutate(NUM_ZERO = sum(c_across(starts_with("mean.")) == 0)) %>%
+  rownames_to_column(var = "SEQ_ID") %>%
+  pivot_longer(cols = starts_with("mean"), values_to = "scaledTPM") %>%
+  # Remove zeroes
+  filter(scaledTPM > 0) %>%
+  separate(name, c("meanfield", "LIBRARY_NUM", "fieldyear", "LOCATION", "SAMPLETYPE", "SAMPLEID"), "_",
+           remove = FALSE) %>%
+  # Isolate the in situ samples only
+  filter(SAMPLETYPE == "insitu") %>% 
+  select(-meanfield, -name) %>%
+  mutate(VENT_FIELD = case_when(grepl("Piccard", fieldyear) ~ "Piccard",
+                                grepl("VonDamm", fieldyear) ~ "Von Damm",
+                                grepl("Axial", fieldyear) ~ "Axial",
+                                grepl("Gorda", fieldyear) ~ "Gorda Ridge")) %>%
+  mutate(VENT_BIN = case_when(
+    (LOCATION == "Background" | LOCATION == "Plume" | LOCATION == "BSW") ~ "Non-vent",
+    grepl("IntlDistrict", LOCATION) ~ "Non-vent",
+    grepl("ASHES", LOCATION) ~ "Non-vent",
+    TRUE ~ "Vent"
+  ))
 
 
-```{r}
-## Positive log fold change == up regulated in ONE, compared to TWO
-# ds_tpm_output_filtered$TYPE <- factor(ds_tpm_output_filtered$TYPE, levels = c("TWO", "ONE"))
-cat("\n\nUpreg in vent is positive\n\n")
-ds_tpm_bin_type$TYPE_BIN <- factor(ds_tpm_bin_type$TYPE_BIN, levels = c("Non-vent", "Vent"))
 
-de_output_bin_type <- DESeq2::DESeq(ds_tpm_bin_type)
-resultsNames(de_output_bin_type)
-summary(de_output_bin_type)
-```
+# Add in annotations, revise taxa
+as_is <- c("Amoebozoa", "Apusozoa", "Excavata", "Hacrobia", "Archaeplastida")
 
+# head(mean_gr_mcr_TPM_df)
+# head(taxfxn)
 
-```{r}
-save(txi_mcr_byfield, mcr_no_tf, ds_tpm_bin_type, de_output_bin_type, file = "/scratch/group/hu-lab/frenemies/MCR_bytype_DESeq.RData")
-```
+long_frenemies_annot <- long_frenemies %>%
+  left_join(taxfxn, by = "SEQ_ID") %>%
+  separate(full_classification, c("Domain", "Supergroup", "Phylum", "Class", "Order", "Family", "Genus_spp"), sep = "; ", remove = FALSE) %>%
+  mutate(SUPERGROUP_18S = case_when(
+    Phylum == "Ciliophora" ~ "Alveolata-Ciliophora",
+    Phylum == "Dinophyta" ~ "Alveolata-Dinoflagellata",
+    # Phylum == "Perkinsea" ~ "Protalveolata",
+    # Phylum == "Colponemidia" ~ "Protalveolata",
+    # Phylum == "Chromerida" ~ "Protalveolata",
+    Supergroup == "Alveolata" ~ "Other Alveolata",
+    Supergroup %in% as_is ~ Supergroup,
+    Supergroup == "Haptista" ~ "Hacrobia",
+    Phylum == "Radiolaria" ~ "Rhizaria-Radiolaria",
+    Phylum == "Cercozoa" ~ "Rhizaria-Cercozoa",
+    (Supergroup == "Rhizaria" & Phylum != "Radiolaria" & Phylum != "Cercozoa") ~ "Rhizaria",
+    Order == "Bigyra" ~ "Stramenopiles-Opalozoa;Sagenista",
+    Class == "Ochromonadales" ~ "Stramenopiles-Ochrophyta",
+    Supergroup == "Stramenopiles" ~ "Stramenopiles",
+    Supergroup == "Opisthokonta" ~ "Opisthokonta",
+    (is.na(Supergroup) | Supergroup == "Eukaryota incertae sedis") ~ "Unknown Eukaryota",
+    TRUE ~ "Other-metaT only"))
 
-### (3) Grazing vs. in situ
-_in situ_ vent only vs. shipboard grazing: use `mcr_paired_tf` and EXP
+cat("Completed data anneal, output:\n")
 
-```{r}
-txi_mcr_tf_insitu <- subsetTxi(txi_mcr, mcr_paired_tf, all_transcripts)
-```
+head(long_frenemies_annot)
 
-DESeq import step
-```{r}
-# Import as DESeq object - use categories in the design
-# DESeq
-ds_tpm_exp <- DESeqDataSetFromTximport(txi_mcr_tf_insitu,
-                                            colData = mcr_paired_tf,
-                                            design = ~0 + EXP)
-## (Option)
-# Further process DESeq
-# groupsize <- 2 # Transcript to consider, must be in at least 3 samples
-# keep <- rowSums(counts(ds_tpm_output) >= 10) >= groupsize # And have >= to 10 counts  #
-# ds_tpm_output_filtered_0 <- ds_tpm_output[keep,]
-# ds_tpm_output_filtered <- estimateSizeFactors(ds_tpm_output_filtered_0, type = 'poscounts')
-# ###
-# Filtering stats:
-# cat("\nStarted with ", dim(ds_tpm_output)[1], "observations. Filtering by 2 samples and 10 counts resulted in,", dim(ds_tpm_output_filtered)[1], ", which is", (100*(dim(ds_tpm_output_filtered)[1]/dim(ds_tpm_output)[1])), "% of the data.\n\n")
-```
+# Save output R object files
+save(long_frenemies, long_frenemies_annot, file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/frenemies-longdfs-gr-mcr.RData")
+cat("SAVED\n")
 
+cat("switching to making matrices for use:")
+# head(mean_gr_mcr_TPM_df)
+# head(long_frenemies)
+matrix_frenemies <- long_frenemies %>% 
+  unite(SAMPLE_NAME, VENT_FIELD, VENT_BIN, LOCATION, sep = "_") %>% 
+  select(SEQ_ID, SAMPLE_NAME, scaledTPM, COG_category, GOs, KEGG_ko, PFAMs, full_classification) %>% 
+  distinct() %>% 
+  group_by(SEQ_ID, SAMPLE_NAME) %>% 
+    summarise(SUM_TPM = sum(scaledTPM)) %>% 
+  pivot_wider(names_from = SAMPLE_NAME, values_from = SUM_TPM, values_fill = 0) %>% 
+  as.matrix
 
-```{r}
-## Positive log fold change == up regulated in ONE, compared to TWO
-# ds_tpm_output_filtered$TYPE <- factor(ds_tpm_output_filtered$TYPE, levels = c("TWO", "ONE"))
-cat("\n\nUpreg in vent is positive\n\n")
-ds_tpm_exp$EXP <- factor(ds_tpm_exp$EXP, levels = c("Tf", "insitu"))
+matrix_frenemies_ventonly <- long_frenemies %>% 
+  unite(SAMPLE_NAME, VENT_FIELD, VENT_BIN, LOCATION, sep = "_") %>% 
+  filter(VENT_BIN = "Vent") %>% 
+  select(SEQ_ID, SAMPLE_NAME, scaledTPM, COG_category, GOs, KEGG_ko, PFAMs, full_classification) %>% 
+  distinct() %>% 
+  group_by(SEQ_ID, SAMPLE_NAME) %>% 
+  summarise(SUM_TPM = sum(scaledTPM)) %>% 
+  pivot_wider(names_from = SAMPLE_NAME, values_from = SUM_TPM, values_fill = 0) %>% 
+  as.matrix
 
-ds_output_exp <- DESeq2::DESeq(ds_tpm_exp)
-resultsNames(ds_output_exp)
-summary(ds_output_exp)
-```
+matrix_frenemies_ciliates <- long_frenemies_annot %>%
+  filter(SUPERGROUP_18S == "Alveolata-Ciliophora") %>% 
+  unite(SAMPLE_NAME, VENT_FIELD, VENT_BIN, LOCATION, sep = "_") %>% 
+  select(SEQ_ID, SAMPLE_NAME, scaledTPM, COG_category, GOs, KEGG_ko, PFAMs, full_classification, SUPERGROUP_18S) %>% 
+  distinct() %>% 
+  group_by(SEQ_ID, SAMPLE_NAME) %>% 
+    summarise(SUM_TPM = sum(scaledTPM)) %>% 
+  pivot_wider(names_from = SAMPLE_NAME, values_from = SUM_TPM, values_fill = 0) %>% 
+  as.matrix
 
+matrix_frenemies_ciliates_ventonly <- long_frenemies_annot %>%
+  filter(SUPERGROUP_18S == "Alveolata-Ciliophora") %>% 
+  filter(VENT_BIN = "Vent") %>% 
+  unite(SAMPLE_NAME, VENT_FIELD, VENT_BIN, LOCATION, sep = "_") %>% 
+  select(SEQ_ID, SAMPLE_NAME, scaledTPM, COG_category, GOs, KEGG_ko, PFAMs, full_classification, SUPERGROUP_18S) %>% 
+  distinct() %>% 
+  group_by(SEQ_ID, SAMPLE_NAME) %>% 
+  summarise(SUM_TPM = sum(scaledTPM)) %>% 
+  pivot_wider(names_from = SAMPLE_NAME, values_from = SUM_TPM, values_fill = 0) %>% 
+  as.matrix
 
-```{r}
-save(txi_mcr_tf_insitu, mcr_paired_tf, ds_tpm_exp, ds_output_exp, file = "/scratch/group/hu-lab/frenemies/MCR_byexp_DESeq.RData")
-```
+# Ciliate taxa key
+# head(long_frenemies_annot)
+key_taxa <- long_frenemies_annot %>% 
+  select(SEQ_ID, full_classification, SUPERGROUP_18S) %>% 
+  distinct() %>% 
+  separate(full_classification, c("Domain", "Supergroup", "Phylum", "Class", "Order", "Family", "Genus_spp"), sep = "; ", remove = FALSE)
 
+cat("Saving data files:\n")
+save(matrix_frenemies, matrix_frenemies_ventonly, key_taxa, file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/matrix_frenemies.RData")
 
-### Compiled DEseq outputs together
-
-```{r}
-df_deseq_compiled <- (data.frame(ds_output_field) %>% 
-  add_column(DESEQ = "Von Damm vs. Piccard") %>% 
-  mutate(REGULATION = case_when(
-    log2FoldChange > 0 ~ "upregulated in Von Damm",
-    log2FoldChange < 0 ~ "upregulated in Piccard"
-  ))) %>% 
-  bind_rows(data.frame(de_output_bin_type) %>% 
-  add_column(DESEQ = "Vent vs. non-vent") %>% 
-  mutate(REGULATION = case_when(
-    log2FoldChange > 0 ~ "upregulated in vent",
-    log2FoldChange < 0 ~ "upregulated in non-vent"
-  ))) %>% 
-  bind_rows(data.frame(ds_output_exp) %>% 
-  add_column(DESEQ = "Grazing vs. in situ") %>% 
-  mutate(REGULATION = case_when(
-    log2FoldChange > 0 ~ "upregulated in situ",
-    log2FoldChange < 0 ~ "upregulated in grazing Tf"
-  ))) %>% 
-  rownames_to_column(var = "SequenceID") %>% 
-  SIGNIFICANT = case_when(
-    pvalue <= 0.05 ~ "Significantly",
-    TRUE ~ "Not significantly"
-  )
-```
-
-Get stats
-```{r}
-stats_deseq <- df_deseq_compiled %>% 
-  group_by(DESEQ, REGULATION, SIGNIFICANT) %>% 
-  summarise(Total_num = n())
-
-write_delim(stats_deseq, file = "output/stats_deseq.txt", delim = "\t")
+save(matrix_frenemies_ciliates, matrix_frenemies_ciliates_ventonly, key_taxa, file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/matrix_ciliates_frenemies.RData")
   
-  
-#   ggplot(aes(x = baseMean, y = log2FoldChange, color = SIGNIFICANT)) +
-#   geom_point(stat = "identity") +
-#   scale_x_log10() +
-#   theme_classic() +
-#   scale_color_manual(values = c("#878787", "#d73027")) +
-#   labs(title = mcols(results_all_fields)$description[2])
-# 
-# allfields_vent_v_nonvent_transcripts <- data.frame(results_all_fields) %>% 
-#   mutate(REGULATION = case_when(
-#     log2FoldChange > 0 ~ "upregulated in vent",
-#     log2FoldChange < 0 ~ "upregulated in non-vent"
-#   ),
-#   SIGNIFICANT = case_when(
-#     pvalue <= 0.05 ~ "Significantly",
-#     TRUE ~ "Not significantly"
-#   )) %>% 
-#   # filter(SIGNIFICANT == "Significantly") %>% 
-#   rownames_to_column(var = "SequenceID")
+
 ```
 
+## Process in DESeq
+
+(a) Use tximport function to subset to data of interest.
+
+(b) Use sample list, ensure sample names are synced. This sample list has the column metadata for DESeq input "design"
+
+(c) Use DESeq's `DESeqDataSetFromTximport()` to import data of interest.
+
+(d) Perform transcript subsetting, so that transcripts should appear in more than 1 sample and have a total sum greater than 10. Also include a step to deal with zeroes by calculating a modified geometric mean (poscounts)
+
+(e) Report and compile final results as the upregulated vs. downregulated transcripts in the given dataset.
+
+Script `frenemies-deseq_FEB.R`
+
+```{r}
+# Deseq values
+library(tidyverse)
+library(DESeq2)
+library(tximport)
+
+# DESeq
+load(file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/tximport-feb-2025.RData", verbose = TRUE)
+# txi_frenemies_mcr_gr, sample_merged_gr_mcr 
+# save(txi_frenemies_mcr_gr, sample_merged_gr_mcr, file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/tximport-feb-2025.RData")
+
+
+# Import as DESeq object - use LIGHT in the design
+cat("Data imported. Starting DESeq from Txi,\n")
+ds_output_gr_mcr <- DESeqDataSetFromTximport(txi_frenemies_mcr_gr,
+                                          colData = sample_merged_gr_mcr,
+                                          design = ~0 + TYPE + SITE)
+ds_output_gr_mcr
+
+groupsize <- 2 # Transcript to consider, must be in at least 3 samples
+keep <- rowSums(counts(ds_output_gr_mcr) >= 10) >= groupsize # And have >= to 10 counts
+
+ds_output_gr_mcr_filtered_0 <- ds_output_gr_mcr[keep,]
+ds_output_gr_mcr_filtered <- estimateSizeFactors(ds_output_gr_mcr_filtered_0, type = 'poscounts')
+
+
+# Filtering stats:
+cat("\nStarted with ", dim(ds_output_gr_mcr)[1], "observations. Filtering by 2 samples and 10 counts resulted in,", dim(ds_output_gr_mcr_filtered)[1], ", which is", (100*(dim(ds_output_gr_mcr_filtered)[1]/dim(ds_output_gr_mcr)[1])), "% of the data.\n\n")
+
+
+## Re-level for comparison - set Vent as the reference.
+ds_output_gr_mcr_filtered$TYPE <- relevel(ds_output_gr_mcr_filtered$TYPE, ref = "Vent")
+
+# ds_tpm_output_filtered$TYPE_BIN <- factor(ds_tpm_output_filtered$TYPE, levels = c("Non-vent", "Vent"))
+de_output_frenemies <- DESeq2::DESeq(ds_output_gr_mcr_filtered)
+
+cat("Report summary stats from DE analysis.\n")
+
+cat("Coefficient as it appears in the output:\n")
+resultsNames(de_output_frenemies)
+
+summary(de_output_frenemies)
+# Rowname: indicating gene id
+# Column 1: baseMean, average expression level across all samples normalised by sequencing depth
+# Column 2: log2FoldChange, in this table above, of treated vs untreated
+# Column 6: padj, adjusted p-value, p-value corrected for multiple testing
+
+save(de_output_frenemies, ds_output_gr_mcr_filtered, ds_output_gr_mcr, sample_merged_gr_mcr, file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/DESeq-frenemies-output_FEB.RData")
+## REVIEW:
+# https://introtogenomics.readthedocs.io/en/latest/2021.11.11.DeseqTutorial.html
+
+save(de_output_frenemies, file = "/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/DEoutput_only_frenemies_FEB.RData")
+```
+
+Started with 37577784 observations. Filtering by 2 samples and 10 counts resulted in, 6435482 , which is 17.12576 % of the data for differential expression analysis.
+
+# Stats from metatranscriptome data
+
+```{r}
+load("input-docs/dfs_gr_mcr_feb2025.RData", verbose = TRUE)
+```
+
+```{r}
+head(mean_gr_mcr_TPM_df)
+```
+
+Across Gorda Ridge and Mid-Cayman Rise sites, we have 44 total samples included.
+
+```{r}
+glimpse(gr_mcr_lenscaled_TPM_df)
+```
+
+8,878,434 transcripts across Gorda Ridge and Mid-Cayman Rise samples. (8.9 million transcripts)
+
+```{r}
+# how many transcripts?
+x <- dim(gr_mcr_lenscaled_TPM_df)[1];x
+# head(gr_mcr_lenscaled_TPM_df)
+```
+
+```{r, fig.height=8, fig.width=9}
+data.frame(colSums(gr_mcr_lenscaled_TPM_df)) %>% 
+  rownames_to_column(var = "SAMPLE") %>% 
+  select(SAMPLE, Transcript_total = `colSums.gr_mcr_lenscaled_TPM_df.`) %>% 
+  ggplot(aes(x = SAMPLE, y = Transcript_total)) +
+  geom_bar(stat = "identity", color = "black", fill = "#009999") +
+  theme_classic() +
+  labs(x = "", y = "Total number of transcripts") +
+  coord_flip()
+```
+
+Histogram of transcript TPM
+
+```{r}
+rowsum_output <- (rowSums(gr_mcr_lenscaled_TPM_df))
+range(rowsum_output)
+mean(rowsum_output)
+
+filtered <- rowsum_output[rowsum_output > ]
+```
+
+# Session Information
+
+```{r}
+sessionInfo()
+```

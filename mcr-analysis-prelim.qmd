@@ -4,6 +4,8 @@ format: html
 editor: visual
 ---
 
+ARCHIVE
+
 # Set up environment - Mid-Cayman Rise
 
 ```{r}
@@ -721,6 +723,7 @@ load("input-docs/mcr_annotated_mean.RData", verbose = TRUE)
 dim(mcr_transcripts)
 # head(mcr_all)
 load("for-plots-mcr.RData", verbose = TRUE)
+head(mcr_all)
 ```
 
 ```{r}
@@ -730,7 +733,7 @@ library(tidyverse)
 ## Log FC & trends in key pathways
 
 ```{r}
-glimpse(mcr_alltranscripts_annot)
+# glimpse(mcr_alltranscripts_annot)
 ```
 
 ```{r, fig.height=5, fig.width=11}
@@ -1108,7 +1111,7 @@ mcr_numeric <- mcr_annotated_mean %>%
   select(-(contains("_Plume_"))) %>% 
   select(-(contains("_Background_"))) %>% 
   select(SequenceID, contains("mean.")) %>% 
-  filter(sum(c_across(cols = starts_with("mean."))) > 0) %>% 
+  # filter(sum(c_across(cols = starts_with("mean."))) > 0) %>% 
   distinct() %>% # remove duplicate transcript IDs.
   column_to_rownames(var = "SequenceID")
 ```
