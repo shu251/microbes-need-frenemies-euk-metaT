@@ -1,0 +1,33 @@
+project:
+  type: website
+  output-dir: docs
+  render:
+    - index.qmd
+    - metat-analysis-eukrhythmic.qmd
+    - eukrhythmic-parameters.qmd
+
+execute:
+  eval: false
+
+website:
+  title: "Microbes need frenemies"
+  navbar:
+    left:
+      - href: index.qmd
+        text: Home
+      - href: eukrhythmic-parameters
+        text: Eukrhythmic
+      - href: metat-analysis-eukrhythmic.qmd
+        text: Process metatranscriptome files
+
+format:
+  html:
+    theme:
+      - cosmo
+    toc: true
+    toc-location: left
+    number-sections: true
+    number-depth: 3
+
+
+
