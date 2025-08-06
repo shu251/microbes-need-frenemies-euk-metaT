@@ -1,0 +1,19 @@
+---
+title: "eukrhythmic parameters"
+format: html
+editor: visual
+execute:
+  eval: false
+---
+
+# *eukrhythmic*
+
+Running [eukrhythmic](https://eukrhythmic.readthedocs.io/en/latest/index.html) for deep-sea hydrothermal vent samples.
+
+## Assembly file
+
+## Mega-assembly parameters
+
+## Databases for protein assignment
+
+## Databases for taxonomy assignment

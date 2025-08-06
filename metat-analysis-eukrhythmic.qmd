@@ -1,14 +1,16 @@
 ---
-title: "Microbes need frenemies: ciliate life styles project"
+title: "eukrhythmic output"
 format: html
 editor: visual
+execute:
+  eval: false
 ---
 
 *last updated ARCHIVE*
 
 # Introduction
 
-Code for running metatranscriptome analysis with [eukrhythmic](https://eukrhythmic.readthedocs.io/en/latest/index.html). Data originates from several vent sites for project 'Microbes need frenemies'.
+Code for processing metatranscriptome files processed with [eukrhythmic](https://eukrhythmic.readthedocs.io/en/latest/index.html). Data originates from several vent sites for project 'Microbes need frenemies'.
 
 ## Set up environment
 
