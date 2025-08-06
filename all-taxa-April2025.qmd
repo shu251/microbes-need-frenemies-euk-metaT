@@ -96,6 +96,20 @@ color_bin <- c("#3b2f2f", "#b4b4b4")
 names(color_bin) <- order_bin
 ```
 
+#### Heatmap colors
+
+```{r}
+yl_red <- c("#ffffcc", "#fed976", "#feb24c", "#fc4e2a", "#e31a1c", "#b10026")
+reds <- c("#f7f7f7","#fee5d9", "#fcae91", "#fb6a4a", "#a50f15")
+# 
+#   scale_fill_stepsn(
+#       # limits = c(-5,5),
+#       # breaks = c(0.0, 3.5, 7.0, 10.5),
+#       show.limits = TRUE,
+#       # colors = reds) +
+#       colors = yl_red)
+```
+
 
 ## Taxonomic curation
 
@@ -1016,7 +1030,6 @@ SAMPLES %>%
 
 
 
-
 # RDA analysis - vent samples
 
 Repeat RDA, but with vent samples only.
@@ -1253,9 +1266,13 @@ heat_base <- data.frame(clr_wide_frenemies_taxa) %>%
 heat_base
 ```
 
-## Heatmap addition plots
 
-### Kegg category for taxonomic groups
+
+
+### else?
+
+
+# Kegg category for taxonomic groups
 
 ```{r}
 # head(kegg_seq_id)
@@ -1488,7 +1505,7 @@ long_outlier <- long_frenemies_annot_tax %>%
   filter(SUPERGROUP_PHYLUM != "Eukaryota incertae sedis-Unannotated") %>% 
   anomalize::anomalize(scaledTPM, method = c("iqr"), max_anoms = 0.2, alpha = 0.05)
 table(long_outlier$anomaly)
-24497/(99316+24497) # 7% outlier
+24497/(99316+24497) # 19% outlier
 ```
 
 Replace outliers. k-means should all be by taxa and KEGG + PFAMS. taxa should be full classification and supergroup
@@ -1518,11 +1535,22 @@ wide_kmean_vent_only_0 <- long_frenemies_annot_tax %>%
   pivot_wider(names_from = TAX, values_from = SUM_TPM, values_fill = 0) %>% 
   column_to_rownames(var = "FXN_INFO") %>% 
   as.matrix
-# range(wide_kmean_vent_only_0)
-# head(wide_kmean_all_0)[,1:3]
+```
+
+### Pre-processing ahead of k-measn
+
+TRY:
+1. clr, distance metric.
+
+```{r}
 wide_kmean_ventonly_clr_1 <- decostand(wide_kmean_vent_only_0, method = "normalize")
-# range(wide_kmean_ventonly_clr_1)
-# hist(wide_kmean_ventonly_clr_1)
+
+range(wide_kmean_ventonly_clr_1)
+hist(wide_kmean_ventonly_clr_1)
+# colnames(wide_kmean_ventonly_clr_1)
+
+# wide_kmean_ventonly_eulc_2 <- stats::dist(t(wide_kmean_ventonly_clr_1), method = "euclidean")
+# dist_norm_metat <- stats::dist(t(normed_metat), method = "euclidean", upper = FALSE, diag = FALSE)
 ```
 
 ```{r}
@@ -1542,6 +1570,32 @@ output_kclusts %>%
   theme_linedraw()
 ```
 
+2. P/A
+
+```{r}
+?decostand
+wide_kmean_ventonly_clr_1 <- decostand(wide_kmean_vent_only_0, method = "pa")
+
+```
+
+```{r}
+kclusts <-
+  tibble(k = 3:20) %>%
+  mutate(
+    kclust = map(k, ~ kmeans(wide_kmean_ventonly_clr_1, .x)),
+    glanced = map(kclust, broom::glance))
+
+output_kclusts <- kclusts %>%
+  unnest(cols = c(glanced))
+
+output_kclusts %>%
+  ggplot(aes(x = k, y = tot.withinss)) +
+    geom_line(alpha = 0.5, linewidth = 1.2, color = "darkgreen") +
+    geom_point(size = 2, color = "darkgreen") +
+  theme_linedraw()
+```
+
+### Continue k-means
 ```{r}
 kmeans10_all_clr_2 <- kmeans(wide_kmean_ventonly_clr_1, centers = 11)
 
@@ -1553,16 +1607,75 @@ broom::glance(kmeans10_all_clr_2)
 augment_cluster10_all_clr_3 <- broom::augment(kmeans10_all_clr_2, wide_kmean_ventonly_clr_1)
 df_kmeans_cluster10_all_clr_3 <- (data.frame(augment_cluster10_all_clr_3))
 head(df_kmeans_cluster10_all_clr_3)
-head(rownames(df_kmeans_cluster10_all_clr_3))
+# colnames(df_kmeans_cluster10_all_clr_3)
 ```
 
 ```{r, fig.height=4, fig.width=10}
 kmeans_membership_all <- df_kmeans_cluster10_all_clr_3 %>% 
-  pivot_longer(cols = -c(.rownames, .cluster)) %>% 
-  select(KEGG_PFAM = `.rownames`, CLUSTER = `.cluster`, tax = name) %>% 
-  separate(tax, into = c("SUPERGROUP_PHYLUM", "full_classification"), sep = "_")
+  # select(cols = -c(.rownames, .cluster)) %>% 
+  select(FXN_INFO = `.rownames`, CLUSTER = `.cluster`) %>% distinct()
+  # separate(tax, into = c("SUPERGROUP_PHYLUM", "full_classification"), sep = "_") %>% 
+  # select(SUPERGROUP_PHYLUM, KEGG_PFAM, CLUSTER) %>% distinct()
+
+head(kmeans_membership_all)
+table(kmeans_membership_all$CLUSTER)
 ```
 
+For each transcript assigned protein ID and taxonomic ID, they are placed into clusters. Here, I can plot the breakdown of protein IDs found within each supergroup phylum and see what cluster they belong to. 
+
+Envision a bar plot. X-axis is the number of protein ID transcripts, y-axis is supergrou phylum
+
+
+## Heatmap addition plots
+
+```{r}
+heat_wcluster <- long_frenemies_annot_tax %>%
+  filter(sample_name != "Von Damm_Vent_MustardStand") %>% 
+  filter(VENT_BIN == "Vent") %>% 
+  filter(Domain == "Eukaryota") %>% 
+  filter(Supergroup != "Opisthokonta") %>%
+  filter(SUPERGROUP_PHYLUM != "Eukaryote-Unannotated") %>% 
+  filter(SUPERGROUP_PHYLUM != "Eukaryota incertae sedis-Unannotated") %>% 
+  unite(SAMPLE_ID, VENT_BIN, VENT_FIELD, LOCATION, sep = "_") %>%
+  unite(FXN_INFO, KEGG, PFAMs, sep = "_") %>%
+  filter(FXN_INFO != "-_-") %>% # Remove unannotated
+  left_join(kmeans_membership_all) %>% 
+  group_by(SUPERGROUP_PHYLUM, CLUSTER) %>%
+    summarise(SUM_TPM = sum(scaledTPM))
+
+head(heat_wcluster)
+```
+
+```{r, , fig.height=12, fig.width=6}
+clusters <- as.character(c(1:11))
+
+kmeans_color <- c("#fcba03","#d8efa5","#f3820c","#d49255",
+                   "#e212bd","#10c7f2","#dc8ef8", "#5c6bcc",
+                   "#80ab32","#facd45","#59ba25","#186cdb",
+                   "#9dd4be","#b3916b","#b0d49d","#14543b",
+                   "#2e7d6c","#507400","#a5e6d8","#a5b6e6",
+                   "#eaba88","#c0a5e6","#572a96", "#d674db")
+
+
+heat_wcluster %>% 
+  mutate(TAX_ORDER = factor(SUPERGROUP_PHYLUM, levels = tax_order_alpha)) %>% 
+  ggplot(aes( y = TAX_ORDER, x = SUM_TPM, fill = CLUSTER)) +
+  geom_bar(stat = "identity", position = "fill") +
+  scale_fill_manual(values = kmeans_color) +
+  theme_classic() +
+  theme(legend.title = element_blank(),
+    axis.text.x = element_text(angle = 90, color = "black", hjust = 0, vjust = 0.5),
+    axis.text.y = element_text(color = "black"),
+    strip.text = element_text(size = 5),
+    strip.background = element_blank()) +
+  labs(x = "", y = "")
+```
+
+> What does the above mean?
+
+Next steps are to...
+* make all the observations abouve figures on slides 2, 3, and 4. Then look at membership of transcript IDs to the clusters... Look at major metabolism patterns from the KEGG assignment. 
+* look at comments below figures on slide deck to determine some key patterns. 
 
 # Session Information
 
