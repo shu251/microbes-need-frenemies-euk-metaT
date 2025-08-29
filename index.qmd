@@ -6,25 +6,18 @@ editor: visual
 
 # Microbes need Frenemies
 
-
 ## Sample collection
 
 ### Mid-Cayman Rise
 
-
 ### Gorda Ridge
-
 
 ## Metatranscriptome sequencing
 
-
 # Code available
-
 
 ## Running eukrhythmic
 
-
 ## Compiling output files
-
 
 ## Data analysis
