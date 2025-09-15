@@ -211,8 +211,8 @@ key_taxa <- long_frenemies_annot_tax %>%
 # head(long_frenemies_annot_tax)
 ## Writing over original
 long_frenemies_annot_tax <-  long_frenemies_annot_tax %>% 
-  filter(sample_name != "Von Damm_Vent_MustardStand") %>% # remove outlier
   unite(sample_name, VENT_FIELD, VENT_BIN, LOCATION, sep = "_", remove = FALSE) %>% 
+  filter(sample_name != "Von Damm_Vent_MustardStand") %>% # remove outlier
   mutate(SAMPLE_NAME_ORDER = factor(sample_name, levels = order_sample_names, labels = label_sample_names),
          SAMPLE_NAME_ORDER_SHORT = factor(sample_name, levels = order_sample_names, labels = label_sample_names_SHORT),
          VENT_BIN_ORDER = factor(VENT_BIN, levels = order_bin),
@@ -462,6 +462,10 @@ bin + field + temp + ph + methane + prok + euk + graze +
 ## Pairwise comparison of samples
 
 First make a numeric matrix.
+```{r}
+head(long_frenemies_annot_tax)
+unique(long_frenemies_annot_tax$LOCATION)
+```
 
 ```{r}
 wide_frenemies_all <- long_frenemies_annot_tax %>% 
@@ -778,13 +782,13 @@ pc2 <- round(variance_logratio[2] * 100, 1)
 
 all_pca <- pca_pts_shared %>% 
   ggplot(aes(x = PC1, y = PC2)) +
+  geom_hline(yintercept = 0, size = 0.2) + geom_vline(xintercept = 0, linewidth = 0.2) +
   geom_point(stroke = 0.3, size = 4, color = "black", aes(shape = Sample, fill = VENT_FIELD)) +
   # scale_shape_manual(values = c(15, 19, 17)) + #COLOR
   scale_shape_manual(values = c(22, 21, 24)) + #fill
   scale_fill_manual(values = c("#4682b4", "#8b0000", "#d4a017")) +
   theme_linedraw() + coord_fixed(ratio = 1) +
   guides(fill = guide_legend(override.aes = list(shape = c(22)))) +
-  geom_hline(yintercept = 0, size = 0.2) + geom_vline(xintercept = 0, linewidth = 0.2) +
   theme(legend.title = element_blank(),
         legend.position = "left",
         axis.text = element_text(color = "black", size = 13),
@@ -793,6 +797,8 @@ all_pca <- pca_pts_shared %>%
   labs(x =  paste(pc1, "%", sep = ""), y = paste(pc2, "%", sep = ""))
 all_pca
 ```
+
+
 
 # RDA analysis - all samples
 
@@ -1522,8 +1528,6 @@ order_tax <- as.character(frenemies_dino_rich$CLASS)
 ```
 
 
-
-
 # Kegg category for taxonomic groups
 
 ```{r}
@@ -1631,28 +1635,66 @@ kegg_tax_nonvent %>%
 
 > The above can make up a preliminary supplementary figure. 
 
-### Kegg Orthology exploration
+# Kegg Orthology exploration
+
+> Within each taxonomic group, what metabolisms are dominant among deep-sea vent protists?
 
 ```{r}
-head(kegg_tax_nonvent)
+head(kegg_tax_vent)
 ```
 
 
 ```{r}
 # unique(kegg_tax_nonvent$KeggOrthology_A)
-tmp <- kegg_tax_nonvent %>% 
+tmp <- kegg_tax_vent %>% 
   filter(KeggOrthology_A == "Genetic Information Processing")
 unique(tmp$KeggOrthology_B)
 
-
-
-
-tmp2 <- tmp %>% 
-  filter(KeggOrthology_B == "Overview") %>% 
-  filter(KeggOrthology_C == "Carbon metabolism")
-tmp2
-unique(tmp2$KeggOrthology_D)
+tmp2 <- kegg_tax_vent %>% 
+  filter(B == "Carbohydrate and lipid metabolism") %>%
+  select(B, Gene_identification) %>% distinct()
+  # filter(KeggOrthology_C == "Carbon metabolism")
+head(tmp2)
+unique(tmp2$C)
+length(unique(tmp2$Gene_identification))
 ```
+
+### Carbon metabolism
+
+Data frame `kegg_tax_vent` has been filtered already.
+```{r}
+head(kegg_tax_vent)
+# unique(kegg_tax_vent$SUPERGROUP_PHYLUM)
+```
+
+
+```{r, fig.height=15, fig.width=8}
+num_only_c <- kegg_tax_vent %>% 
+  filter(B == "Carbohydrate and lipid metabolism") %>% 
+  # filter(KeggOrthology_C == "Carbon metabolism") %>% #Try to subset C?
+  unite(Carb_fxn, C, Gene_identification, sep = " ; ") %>% 
+  select(Carb_fxn, SUPERGROUP_PHYLUM, scaledTPM) %>% distinct() %>% 
+  filter(scaledTPM > 5) %>% 
+  pivot_wider(names_from = SUPERGROUP_PHYLUM, values_from = scaledTPM, values_fill = 0, values_fn = mean) %>% 
+  column_to_rownames(var = "Carb_fxn")
+
+num_only_c_stand <- vegan::decostand(num_only_c, method = "range", MARGIN = 1)
+
+data.frame(num_only_c_stand) %>% 
+  rownames_to_column(var = "Carb_fxn") %>% 
+  pivot_longer(cols = -c(Carb_fxn), names_to = "SUPERGROUP_PHYLUM", values_to = "RANK_VALUE") %>% 
+  separate(Carb_fxn, into = c("C", "Gene_identification"), sep = " ; ") %>% 
+  ggplot(aes(x = SUPERGROUP_PHYLUM, y = Gene_identification, fill = RANK_VALUE)) +
+  geom_tile() +
+  scale_fill_fermenter(type = "seq", palette = "Oranges", direction = 1) +
+  facet_grid(rows = vars(C), scale = "free", space = "free") +
+  scale_x_discrete(position = "top") +
+  theme(axis.text.y = element_blank(),
+        axis.text.x = element_text(angle = 90, color = "black", vjust = 1, hjust = 0),
+        strip.text.y = element_text(angle = 0, color = "black", vjust = 1, hjust = 0))
+```
+
+
 
 #### Cellular Processes
 >> Cell growth and death
@@ -1684,7 +1726,7 @@ tmp_cell_process_norm <- vegan::decostand(tmp_cell_process, na.rm = TRUE, method
   rownames_to_column(var = "Gene_identification") %>% 
   pivot_longer(cols = -c(Gene_identification), names_to = "SUPERGROUP_PHYLUM", values_to = "TPM_NORM")
 
-# head(tmp_cell_process_norm)
+head(tmp_cell_process_norm)
 # unique(cell_process$KeggOrthology_C)
 ```
 
@@ -1790,13 +1832,14 @@ vent_kegg_curated <- kegg_tax_vent %>%
 # head(vent_kegg)
 vent_kegg_curated_norm <- decostand(vent_kegg_curated, method = "normalize", MARGIN = 2)
 # head(vent_kegg_curated_norm)
-colSums(vent_kegg_curated_norm)
+# colSums(vent_kegg_curated_norm)
 ```
 
 ```{r, fig.height=13, fig.width=15}
 as.data.frame(vent_kegg_curated_norm) %>% 
   rownames_to_column(var = "CLASS") %>% 
   pivot_longer(cols = -c(CLASS), names_to = "SUPERGROUP_PHYLUM", values_to = "norm_tpm") %>% 
+  filter(!(grepl("Unannotated", SUPERGROUP_PHYLUM)))
   filter(norm_tpm > 0) %>% 
   separate(CLASS, into = c("CLASSIFICATION_BROAD", "CLASSIFICATION_SPECIFIC"), sep = ";") %>% 
   mutate(TAX_ORDER = factor(SUPERGROUP_PHYLUM, levels = tax_order_alpha)) %>% 
@@ -1824,19 +1867,701 @@ head(kegg_tax_vent)
 kegg_tax_vent %>% 
   select(SUPERGROUP_PHYLUM, PFAMs, KEGG, scaledTPM, Gene_identification, A, B, C, )
 ```
+# WCGNA
 
 
-# K-means of vent-only signatures by taxa
+
+# K-means estimation
 
 ```{r}
 library(anomalize)
 library(cluster)
 library(factoextra)
 ```
-Determine outliers
 
 ```{r}
-set.seed(3078)
+set.seed(3004)
+```
+
+1. Subset samples as necessary.
+2. Find and replace outliers.
+3. Sum resulting transcripts by functional definition (PFAM + KEGG ID). Include distribution across. 
+
+K-means clusters determined by TPM across samples. Two pre-treatment methods include converting to binary (p/a) and Euclidean distance.
+
+## All data
+
+Use all data, removing only Mustard Stand, determine outliers.
+
+Find outliers. *Try with all data* Then try with >1 filter
+
+```{r}
+long_outlier <- long_frenemies_annot_tax %>% 
+  filter(scaledTPM > 1) %>%
+  filter(sample_name != "Von Damm_Vent_MustardStand") %>% 
+  # filter(VENT_BIN == "Vent") %>% 
+  # filter(Domain == "Eukaryota") %>% 
+  # filter(Supergroup != "Opisthokonta") %>%
+  # filter(SUPERGROUP_PHYLUM != "Eukaryote-Unannotated") %>% 
+  # filter(SUPERGROUP_PHYLUM != "Eukaryota incertae sedis-Unannotated") %>% 
+  anomalize::anomalize(scaledTPM, method = c("iqr"), max_anoms = 0.2, alpha = 0.05)
+table(long_outlier$anomaly)
+36036/(439185+36036) # 7.5% transcripts considered outliers
+```
+
+Replace outliers with min and max values identified as non-outliers. 
+
+```{r}
+wide_kmean_vent_only_0 <- long_frenemies_annot_tax %>% 
+  filter(scaledTPM > 1) %>%
+  filter(sample_name != "Von Damm_Vent_MustardStand") %>% 
+  # filter(VENT_BIN == "Vent") %>% 
+  # filter(Domain == "Eukaryota") %>% 
+  # filter(Supergroup != "Opisthokonta") %>%
+  # filter(SUPERGROUP_PHYLUM != "Eukaryote-Unannotated") %>%
+  # filter(SUPERGROUP_PHYLUM != "Eukaryota incertae sedis-Unannotated") %>%
+  mutate(NEW_TPM = case_when(
+    (scaledTPM > unique(long_outlier$scaledTPM_l2)[1]) ~ unique(long_outlier$scaledTPM_l2)[1],
+    (scaledTPM < unique(long_outlier$scaledTPM_l1)[1]) ~ unique(long_outlier$scaledTPM_l1)[1],
+    TRUE ~ scaledTPM
+  )) %>% 
+  unite(SAMPLE_ID, VENT_BIN, VENT_FIELD, LOCATION, sep = "_") %>% 
+  unite(FXN_INFO, KEGG, PFAMs, sep = "_") %>% # Does not include taxonomic information
+  filter(FXN_INFO != "-_-") %>% # Remove unannotated
+  group_by(SAMPLE_ID, FXN_INFO) %>% 
+  # group_by(SAMPLE_ID, SUPERGROUP_PHYLUM, full_classification, FXN_INFO) %>% 
+    summarise(mean_TPM = mean(NEW_TPM)) %>% 
+  ungroup() %>% 
+  # group_by(SUPERGROUP_PHYLUM, full_classification, FXN_INFO) %>% 
+  #   summarise(SUM_TPM = sum(mean_TPM)) %>% 
+  # unite(TAX, SUPERGROUP_PHYLUM, full_classification, sep = "_") %>% 
+  pivot_wider(names_from = SAMPLE_ID, values_from = mean_TPM, values_fill = 0) %>% 
+  column_to_rownames(var = "FXN_INFO") %>% 
+  as.matrix
+dim(wide_kmean_vent_only_0)
+```
+
+### All data: P/A 
+
+```{r}
+# ?decostand
+wide_kmean_ventonly_pa <- decostand(wide_kmean_vent_only_0, method = "pa", MARGIN = 2)
+# 
+```
+
+```{r}
+kclusts <-
+  tibble(k = 3:20) %>%
+  mutate(
+    kclust = map(k, ~ kmeans(wide_kmean_ventonly_pa, .x)),
+    glanced = map(kclust, broom::glance))
+ n 
+output_kclusts <- kclusts %>%
+  unnest(cols = c(glanced))
+
+output_kclusts %>%
+  ggplot(aes(x = k, y = tot.withinss)) +
+    geom_line(alpha = 0.5, linewidth = 1.2, color = "darkgreen") +
+    geom_point(size = 2, color = "darkgreen") +
+  theme_linedraw()
+```
+> All data with presence/absence determined to be 11 clusters.
+
+
+```{r}
+kmeans10_vent_pa <- kmeans(wide_kmean_ventonly_pa, centers = 13)
+
+summary(kmeans10_vent_pa)
+# print(kmeans10_vent_pa)
+broom::tidy(kmeans10_vent_pa)
+broom::glance(kmeans10_vent_pa)
+
+# Combine with data
+augment_cluster10_vent_pa_3 <- broom::augment(kmeans10_vent_pa, wide_kmean_ventonly_pa)
+
+df_kmeans_cluster10_vent_pa_3 <- (data.frame(augment_cluster10_vent_pa_3))
+
+head(df_kmeans_cluster10_vent_pa_3)
+# colnames(df_kmeans_cluster10_all_clr_3)
+```
+
+*Output for all data, P/A, and 11 k-means clusters*: K-means clustering with 11 clusters of sizes 2748, 1814, 933, 1050, 4560, 1668, 1764, 2123, 1464, 1290, 3084
+
+
+> Row names are functional definitions and column headers are sample ID.
+
+
+```{r, fig.height=4, fig.width=10}
+kmeans_membership_all_pa <- df_kmeans_cluster10_vent_pa_3 %>% 
+  select(FXN_INFO = `.rownames`, CLUSTER = `.cluster`) %>% distinct()
+
+head(kmeans_membership_all_pa)
+```
+
+> SARAH MAKE CLUSTER-BASED PLOTS
+
+### All data: P/A Visualize k-means output
+
+```{r}
+frenemies_all_pa_kmeans <- long_frenemies_annot_tax %>%
+  filter(sample_name != "Von Damm_Vent_MustardStand") %>% 
+  # filter(VENT_BIN == "Vent") %>% 
+  # filter(Domain == "Eukaryota") %>% 
+  # filter(Supergroup != "Opisthokonta") %>%
+  # filter(SUPERGROUP_PHYLUM != "Eukaryote-Unannotated") %>% 
+  # filter(SUPERGROUP_PHYLUM != "Eukaryota incertae sedis-Unannotated") %>% 
+  # unite(SAMPLE_ID, VENT_BIN, VENT_FIELD, LOCATION, sep = "_") %>%
+  unite(FXN_INFO, KEGG, PFAMs, sep = "_") %>%
+  left_join(kmeans_membership_all_pa)
+
+```
+
+```{r, fig.height=6, fig.width=6}
+frenemies_all_pa_kmeans %>% 
+  unite(SAMPLE_ID, VENT_FIELD, VENT_BIN, LOCATION, sep = "_") %>%
+  filter(!is.na(CLUSTER)) %>% 
+  group_by(SAMPLE_ID, CLUSTER) %>% 
+    summarize(TRANSCRIPTS_IN_CLUSTER = n(),
+              SUM_TRANSCRIPTS_IN_CLUSTER = sum(scaledTPM)) %>% 
+  mutate(SAMPLE_NAME_ORDER = factor(SAMPLE_ID, levels = order_sample_names, labels = label_sample_names)) %>% 
+  ggplot(aes(x = SAMPLE_NAME_ORDER, y = CLUSTER, size = TRANSCRIPTS_IN_CLUSTER)) +
+    geom_point(stat = "identity", shape = 21) +
+  scale_x_discrete(position = "top") +
+  
+  theme_classic() +
+  theme(legend.title = element_blank(),
+        legend.position = "left",
+        # axis.line = element_blank(),
+        # axis.ticks = element_blank(),
+        panel.grid.major = element_line(),
+    axis.text.x = element_text(angle = 90, color = "black", hjust = 0, vjust = 0),
+    axis.text.y = element_text(color = "black"),
+    strip.text.y = element_text(angle = 0, color = "black", hjust = 0, vjust = 0),
+    strip.background = element_blank()) +
+  labs(x = "", y = "")
+```
+```{r, fig.height=15, fig.width=7}
+frenemies_all_pa_kmeans %>% 
+  unite(SAMPLE_ID, VENT_FIELD, VENT_BIN, LOCATION, sep = "_") %>%
+  filter(!is.na(CLUSTER)) %>% 
+  group_by(SUPERGROUP_PHYLUM_CLASS, CLUSTER) %>% 
+    summarize(TRANSCRIPTS_IN_CLUSTER = n(),
+              SUM_TRANSCRIPTS_IN_CLUSTER = sum(scaledTPM)) %>% 
+  # mutate(SAMPLE_NAME_ORDER = factor(SAMPLE_ID, levels = order_sample_names, labels = label_sample_names)) %>% 
+  ggplot(aes(x = CLUSTER, y = SUPERGROUP_PHYLUM_CLASS, size = TRANSCRIPTS_IN_CLUSTER)) +
+    geom_point(stat = "identity", shape = 21)
+```
+> Observations: Not a whole lot of differences across clusters. Some absent by taxa and specific samples. 
+
+
+
+
+
+
+
+
+
+
+### All data: Hellinger
+
+With TPM > 1 filter and Hellinger transformation.
+
+```{r}
+# ?decostand()
+# ?kmeans()
+wide_kmean_ventonly_pa <- decostand(wide_kmean_vent_only_0, method = "hellinger", MARGIN = 1)
+# hist(wide_kmean_ventonly_pa)
+```
+
+```{r}
+kclusts <-
+  tibble(k = 3:20) %>%
+  mutate(
+    kclust = map(k, ~ kmeans(wide_kmean_ventonly_pa, .x)),
+    glanced = map(kclust, broom::glance))
+ n 
+output_kclusts <- kclusts %>%
+  unnest(cols = c(glanced))
+
+output_kclusts %>%
+  ggplot(aes(x = k, y = tot.withinss)) +
+    geom_line(alpha = 0.5, linewidth = 1.2, color = "darkgreen") +
+    geom_point(size = 2, color = "darkgreen") +
+  theme_linedraw()
+```
+> All data with presence/absence determined to be 13 clusters.
+
+
+```{r}
+kmeans10_vent_pa <- kmeans(wide_kmean_ventonly_pa, centers = 13)
+
+summary(kmeans10_vent_pa)
+print(kmeans10_vent_pa)
+broom::tidy(kmeans10_vent_pa)
+broom::glance(kmeans10_vent_pa)
+
+# Combine with data
+augment_cluster10_vent_pa_3 <- broom::augment(kmeans10_vent_pa, wide_kmean_ventonly_pa)
+
+df_kmeans_cluster10_vent_pa_3 <- (data.frame(augment_cluster10_vent_pa_3))
+
+head(df_kmeans_cluster10_vent_pa_3)
+# colnames(df_kmeans_cluster10_all_clr_3)
+```
+
+*Output for all data, >1 TPM, Hellinfer, and 13 k-means clusters*: K-means clustering with 13 clusters of sizes 2470, 1093, 482, 585, 186, 1080, 3661, 225, 135, 2550, 1109, 1680, 2280
+
+
+> Row names are functional definitions and column headers are sample ID.
+
+
+```{r, fig.height=4, fig.width=10}
+kmeans_membership_all_hell <- df_kmeans_cluster10_vent_pa_3 %>% 
+  select(FXN_INFO = `.rownames`, CLUSTER = `.cluster`) %>% distinct()
+```
+
+### All data: Hellinger Visualize k-means output
+
+```{r}
+frenemies_all_hell_kmeans <- long_frenemies_annot_tax %>%
+  filter(sample_name != "Von Damm_Vent_MustardStand") %>% 
+  # filter(VENT_BIN == "Vent") %>% 
+  # filter(Domain == "Eukaryota") %>% 
+  # filter(Supergroup != "Opisthokonta") %>%
+  # filter(SUPERGROUP_PHYLUM != "Eukaryote-Unannotated") %>% 
+  # filter(SUPERGROUP_PHYLUM != "Eukaryota incertae sedis-Unannotated") %>% 
+  # unite(SAMPLE_ID, VENT_BIN, VENT_FIELD, LOCATION, sep = "_") %>%
+  unite(FXN_INFO, KEGG, PFAMs, sep = "_") %>%
+  left_join(kmeans_membership_all_hell)
+
+```
+
+```{r, fig.height=6, fig.width=6}
+frenemies_all_hell_kmeans %>% 
+  unite(SAMPLE_ID, VENT_FIELD, VENT_BIN, LOCATION, sep = "_") %>%
+  filter(!is.na(CLUSTER)) %>% 
+  group_by(SAMPLE_ID, CLUSTER) %>% 
+    summarize(TRANSCRIPTS_IN_CLUSTER = n(),
+              SUM_TRANSCRIPTS_IN_CLUSTER = sum(scaledTPM)) %>% 
+  mutate(SAMPLE_NAME_ORDER = factor(SAMPLE_ID, levels = order_sample_names, labels = label_sample_names)) %>% 
+  ggplot(aes(x = SAMPLE_NAME_ORDER, y = CLUSTER, size = TRANSCRIPTS_IN_CLUSTER)) +
+    geom_point(stat = "identity", shape = 21) +
+  scale_x_discrete(position = "top") +
+  
+  theme_classic() +
+  theme(legend.title = element_blank(),
+        legend.position = "left",
+        # axis.line = element_blank(),
+        # axis.ticks = element_blank(),
+        panel.grid.major = element_line(),
+    axis.text.x = element_text(angle = 90, color = "black", hjust = 0, vjust = 0),
+    axis.text.y = element_text(color = "black"),
+    strip.text.y = element_text(angle = 0, color = "black", hjust = 0, vjust = 0),
+    strip.background = element_blank()) +
+  labs(x = "", y = "")
+```
+```{r, fig.height=15, fig.width=7}
+frenemies_all_hell_kmeans %>% 
+  unite(SAMPLE_ID, VENT_FIELD, VENT_BIN, LOCATION, sep = "_") %>%
+  filter(!is.na(CLUSTER)) %>% 
+  group_by(SUPERGROUP_PHYLUM_CLASS, CLUSTER) %>% 
+    summarize(TRANSCRIPTS_IN_CLUSTER = n(),
+              SUM_TRANSCRIPTS_IN_CLUSTER = sum(scaledTPM)) %>% 
+  # mutate(SAMPLE_NAME_ORDER = factor(SAMPLE_ID, levels = order_sample_names, labels = label_sample_names)) %>% 
+  ggplot(aes(x = CLUSTER, y = SUPERGROUP_PHYLUM_CLASS, size = TRANSCRIPTS_IN_CLUSTER)) +
+    geom_point(stat = "identity", shape = 21)
+```
+> Observations: Not a whole lot of differences across clusters. Some absent by taxa and specific samples. 
+
+
+
+
+
+
+
+
+
+
+
+## All samples, remove unannotated
+
+Use all samples, remove Mustard Stand, unannotated, and determine outliers.
+
+Find outliers. *Try with all data* Then try with >1 filter
+
+```{r}
+long_outlier <- long_frenemies_annot_tax %>% 
+  filter(scaledTPM > 1) %>%
+  filter(sample_name != "Von Damm_Vent_MustardStand") %>% 
+  # filter(VENT_BIN == "Vent") %>% 
+  filter(Domain == "Eukaryota") %>%
+  # filter(Supergroup != "Opisthokonta") %>%
+  filter(SUPERGROUP_PHYLUM != "Eukaryote-Unannotated") %>%
+  filter(SUPERGROUP_PHYLUM != "Eukaryota incertae sedis-Unannotated") %>%
+  anomalize::anomalize(scaledTPM, method = c("iqr"), max_anoms = 0.2, alpha = 0.05)
+table(long_outlier$anomaly)
+11174/(225128+11174) # 4.7% transcripts considered outliers
+```
+
+Replace outliers with min and max values identified as non-outliers. 
+
+```{r}
+wide_kmean_vent_only_0 <- long_frenemies_annot_tax %>% 
+  filter(scaledTPM > 1) %>%
+  filter(sample_name != "Von Damm_Vent_MustardStand") %>% 
+  # filter(VENT_BIN == "Vent") %>% 
+  filter(Domain == "Eukaryota") %>%
+  # filter(Supergroup != "Opisthokonta") %>%
+  filter(SUPERGROUP_PHYLUM != "Eukaryote-Unannotated") %>%
+  filter(SUPERGROUP_PHYLUM != "Eukaryota incertae sedis-Unannotated") %>%
+  mutate(NEW_TPM = case_when(
+    (scaledTPM > unique(long_outlier$scaledTPM_l2)[1]) ~ unique(long_outlier$scaledTPM_l2)[1],
+    (scaledTPM < unique(long_outlier$scaledTPM_l1)[1]) ~ unique(long_outlier$scaledTPM_l1)[1],
+    TRUE ~ scaledTPM
+  )) %>% 
+  unite(SAMPLE_ID, VENT_BIN, VENT_FIELD, LOCATION, sep = "_") %>% 
+  unite(FXN_INFO, KEGG, PFAMs, sep = "_") %>% # Does not include taxonomic information
+  filter(FXN_INFO != "-_-") %>% # Remove unannotated
+  group_by(SAMPLE_ID, FXN_INFO) %>% 
+  # group_by(SAMPLE_ID, SUPERGROUP_PHYLUM, full_classification, FXN_INFO) %>% 
+    summarise(mean_TPM = mean(NEW_TPM)) %>% 
+  ungroup() %>% 
+  # group_by(SUPERGROUP_PHYLUM, full_classification, FXN_INFO) %>% 
+  #   summarise(SUM_TPM = sum(mean_TPM)) %>% 
+  # unite(TAX, SUPERGROUP_PHYLUM, full_classification, sep = "_") %>% 
+  pivot_wider(names_from = SAMPLE_ID, values_from = mean_TPM, values_fill = 0) %>% 
+  column_to_rownames(var = "FXN_INFO") %>% 
+  as.matrix
+dim(wide_kmean_vent_only_0)
+```
+
+### All data, no unannotated P/A 
+
+```{r}
+# ?decostand
+wide_kmean_ventonly_pa <- decostand(wide_kmean_vent_only_0, method = "pa", MARGIN = 2)
+# 
+```
+
+```{r}
+kclusts <-
+  tibble(k = 3:20) %>%
+  mutate(
+    kclust = map(k, ~ kmeans(wide_kmean_ventonly_pa, .x)),
+    glanced = map(kclust, broom::glance))
+ n 
+output_kclusts <- kclusts %>%
+  unnest(cols = c(glanced))
+
+output_kclusts %>%
+  ggplot(aes(x = k, y = tot.withinss)) +
+    geom_line(alpha = 0.5, linewidth = 1.2, color = "darkgreen") +
+    geom_point(size = 2, color = "darkgreen") +
+  theme_linedraw()
+```
+> All data with presence/absence determined to be 11 clusters.
+
+
+```{r}
+kmeans10_vent_pa <- kmeans(wide_kmean_ventonly_pa, centers = 10)
+
+summary(kmeans10_vent_pa)
+print(kmeans10_vent_pa)
+broom::tidy(kmeans10_vent_pa)
+broom::glance(kmeans10_vent_pa)
+
+# Combine with data
+augment_cluster10_vent_pa_3 <- broom::augment(kmeans10_vent_pa, wide_kmean_ventonly_pa)
+
+df_kmeans_cluster10_vent_pa_3 <- (data.frame(augment_cluster10_vent_pa_3))
+
+head(df_kmeans_cluster10_vent_pa_3)
+# colnames(df_kmeans_cluster10_all_clr_3)
+```
+
+*Output for all data, P/A, and 11 k-means clusters*: K-means clustering with 11 clusters of sizes 2748, 1814, 933, 1050, 4560, 1668, 1764, 2123, 1464, 1290, 3084
+
+
+> Row names are functional definitions and column headers are sample ID.
+
+
+```{r, fig.height=4, fig.width=10}
+kmeans_membership_alleuk_pa <- df_kmeans_cluster10_vent_pa_3 %>% 
+  select(FXN_INFO = `.rownames`, CLUSTER = `.cluster`) %>% distinct()
+```
+
+### All data, no unannotated P/A Visualize k-means output
+
+```{r}
+frenemies_alleuk_pa_kmeans <- long_frenemies_annot_tax %>%
+  filter(sample_name != "Von Damm_Vent_MustardStand") %>% 
+  # filter(VENT_BIN == "Vent") %>% 
+  filter(Domain == "Eukaryota") %>%
+  # filter(Supergroup != "Opisthokonta") %>%
+  filter(SUPERGROUP_PHYLUM != "Eukaryote-Unannotated") %>%
+  filter(SUPERGROUP_PHYLUM != "Eukaryota incertae sedis-Unannotated") %>%
+  # unite(SAMPLE_ID, VENT_BIN, VENT_FIELD, LOCATION, sep = "_") %>%
+  unite(FXN_INFO, KEGG, PFAMs, sep = "_") %>%
+  left_join(kmeans_membership_alleuk_pa)
+
+```
+
+```{r, fig.height=6, fig.width=6}
+frenemies_alleuk_pa_kmeans %>% 
+  unite(SAMPLE_ID, VENT_FIELD, VENT_BIN, LOCATION, sep = "_") %>%
+  filter(!is.na(CLUSTER)) %>% 
+  group_by(SAMPLE_ID, CLUSTER) %>% 
+    summarize(TRANSCRIPTS_IN_CLUSTER = n(),
+              SUM_TRANSCRIPTS_IN_CLUSTER = sum(scaledTPM)) %>% 
+  mutate(SAMPLE_NAME_ORDER = factor(SAMPLE_ID, levels = order_sample_names, labels = label_sample_names)) %>% 
+  ggplot(aes(x = SAMPLE_NAME_ORDER, y = CLUSTER, size = TRANSCRIPTS_IN_CLUSTER)) +
+    geom_point(stat = "identity", shape = 21) +
+  scale_x_discrete(position = "top") +
+  
+  theme_classic() +
+  theme(legend.title = element_blank(),
+        legend.position = "left",
+        # axis.line = element_blank(),
+        # axis.ticks = element_blank(),
+        panel.grid.major = element_line(),
+    axis.text.x = element_text(angle = 90, color = "black", hjust = 0, vjust = 0),
+    axis.text.y = element_text(color = "black"),
+    strip.text.y = element_text(angle = 0, color = "black", hjust = 0, vjust = 0),
+    strip.background = element_blank()) +
+  labs(x = "", y = "")
+```
+```{r, fig.height=15, fig.width=7}
+frenemies_alleuk_pa_kmeans %>% 
+  unite(SAMPLE_ID, VENT_FIELD, VENT_BIN, LOCATION, sep = "_") %>%
+  filter(!is.na(CLUSTER)) %>% 
+  group_by(SUPERGROUP_PHYLUM_CLASS, CLUSTER) %>% 
+    summarize(TRANSCRIPTS_IN_CLUSTER = n(),
+              SUM_TRANSCRIPTS_IN_CLUSTER = sum(scaledTPM)) %>% 
+  # mutate(SAMPLE_NAME_ORDER = factor(SAMPLE_ID, levels = order_sample_names, labels = label_sample_names)) %>% 
+  ggplot(aes(x = CLUSTER, y = SUPERGROUP_PHYLUM_CLASS, size = TRANSCRIPTS_IN_CLUSTER)) +
+    geom_point(stat = "identity", shape = 21)
+```
+> Observations: Not a whole lot of differences across clusters. Some absent by taxa and specific samples. 
+
+
+
+
+
+
+
+
+
+
+
+
+### All data, no unannotated Hellinger 
+
+```{r}
+# ?decostand
+wide_kmean_ventonly_pa <- decostand(wide_kmean_vent_only_0, method = "hellinger", MARGIN = 1)
+# 
+```
+
+```{r}
+kclusts <-
+  tibble(k = 3:20) %>%
+  mutate(
+    kclust = map(k, ~ kmeans(wide_kmean_ventonly_pa, .x)),
+    glanced = map(kclust, broom::glance))
+ 
+output_kclusts <- kclusts %>%
+  unnest(cols = c(glanced))
+
+output_kclusts %>%
+  ggplot(aes(x = k, y = tot.withinss)) +
+    geom_line(alpha = 0.5, linewidth = 1.2, color = "darkgreen") +
+    geom_point(size = 2, color = "darkgreen") +
+  theme_linedraw()
+```
+> All data with presence/absence determined to be 11 clusters.
+
+
+```{r}
+kmeans10_vent_pa <- kmeans(wide_kmean_ventonly_pa, centers = 9)
+
+summary(kmeans10_vent_pa)
+print(kmeans10_vent_pa)
+broom::tidy(kmeans10_vent_pa)
+broom::glance(kmeans10_vent_pa)
+
+# Combine with data
+augment_cluster10_vent_pa_3 <- broom::augment(kmeans10_vent_pa, wide_kmean_ventonly_pa)
+
+df_kmeans_cluster10_vent_pa_3 <- (data.frame(augment_cluster10_vent_pa_3))
+
+head(df_kmeans_cluster10_vent_pa_3)
+# colnames(df_kmeans_cluster10_all_clr_3)
+```
+
+*Output for all data, P/A, and 11 k-means clusters*: K-means clustering with 11 clusters of sizes 2748, 1814, 933, 1050, 4560, 1668, 1764, 2123, 1464, 1290, 3084
+
+
+> Row names are functional definitions and column headers are sample ID.
+
+
+```{r, fig.height=4, fig.width=10}
+kmeans_membership_alleuk_hell <- df_kmeans_cluster10_vent_pa_3 %>% 
+  select(FXN_INFO = `.rownames`, CLUSTER = `.cluster`) %>% distinct()
+```
+
+### All data, no unannotated P/A Visualize k-means output
+
+```{r}
+frenemies_alleuk_hell_kmeans <- long_frenemies_annot_tax %>%
+  filter(sample_name != "Von Damm_Vent_MustardStand") %>% 
+  # filter(VENT_BIN == "Vent") %>% 
+  filter(Domain == "Eukaryota") %>%
+  # filter(Supergroup != "Opisthokonta") %>%
+  filter(SUPERGROUP_PHYLUM != "Eukaryote-Unannotated") %>%
+  filter(SUPERGROUP_PHYLUM != "Eukaryota incertae sedis-Unannotated") %>%
+  # unite(SAMPLE_ID, VENT_BIN, VENT_FIELD, LOCATION, sep = "_") %>%
+  unite(FXN_INFO, KEGG, PFAMs, sep = "_") %>%
+  left_join(kmeans_membership_alleuk_hell)
+
+```
+
+```{r, fig.height=6, fig.width=6}
+frenemies_alleuk_hell_kmeans %>% 
+  unite(SAMPLE_ID, VENT_FIELD, VENT_BIN, LOCATION, sep = "_") %>%
+  filter(!is.na(CLUSTER)) %>% 
+  group_by(SAMPLE_ID, CLUSTER) %>% 
+    summarize(TRANSCRIPTS_IN_CLUSTER = n(),
+              SUM_TRANSCRIPTS_IN_CLUSTER = sum(scaledTPM)) %>% 
+  mutate(SAMPLE_NAME_ORDER = factor(SAMPLE_ID, levels = order_sample_names, labels = label_sample_names)) %>% 
+  ggplot(aes(x = SAMPLE_NAME_ORDER, y = CLUSTER, size = TRANSCRIPTS_IN_CLUSTER)) +
+    geom_point(stat = "identity", shape = 21) +
+  scale_x_discrete(position = "top") +
+  
+  theme_classic() +
+  theme(legend.title = element_blank(),
+        legend.position = "left",
+        # axis.line = element_blank(),
+        # axis.ticks = element_blank(),
+        panel.grid.major = element_line(),
+    axis.text.x = element_text(angle = 90, color = "black", hjust = 0, vjust = 0),
+    axis.text.y = element_text(color = "black"),
+    strip.text.y = element_text(angle = 0, color = "black", hjust = 0, vjust = 0),
+    strip.background = element_blank()) +
+  labs(x = "", y = "")
+```
+```{r, fig.height=15, fig.width=7}
+frenemies_alleuk_hell_kmeans %>% 
+  unite(SAMPLE_ID, VENT_FIELD, VENT_BIN, LOCATION, sep = "_") %>%
+  filter(!is.na(CLUSTER)) %>% 
+  group_by(SUPERGROUP_PHYLUM_CLASS, CLUSTER) %>% 
+    summarize(TRANSCRIPTS_IN_CLUSTER = n(),
+              SUM_TRANSCRIPTS_IN_CLUSTER = sum(scaledTPM)) %>% 
+  # mutate(SAMPLE_NAME_ORDER = factor(SAMPLE_ID, levels = order_sample_names, labels = label_sample_names)) %>% 
+  ggplot(aes(x = CLUSTER, y = SUPERGROUP_PHYLUM_CLASS, size = TRANSCRIPTS_IN_CLUSTER)) +
+    geom_point(stat = "identity", shape = 21)
+```
+> Observations: Not a whole lot of differences across clusters. Some absent by taxa and specific samples. 
+
+
+
+
+# Incorporate kmeans output 
+
+```{r}
+head(kmeans_membership_all_pa)
+```
+
+All data, scaled TPM > 1 and outlier removed.
+Add to dataframe it originated from:
+```{r}
+long_frenemes_kmeans <- long_frenemies_annot_tax %>% 
+  unite(SAMPLE_ID, VENT_BIN, VENT_FIELD, LOCATION, sep = "_") %>% 
+  unite(FXN_INFO, KEGG, PFAMs, sep = "_", remove = FALSE) %>% # Does not include taxonomic information
+  filter(FXN_INFO != "-_-") %>% # Remove unannotated
+  separate_longer_delim(KEGG, delim = ",") %>%
+  mutate(KEGG = str_remove_all(KEGG, "ko:")) %>% 
+  left_join(kegg_key) %>% 
+  left_join(kmeans_membership_all_pa) %>% 
+  # Isolate just the kegg ID information
+  select(FXN_INFO, KEGG, PFAMs, A, B, C, D, Gene_identification, KeggOrthology_A, KeggOrthology_B, KeggOrthology_C, CLUSTER, scaledTPM) %>% 
+  distinct()
+  
+colnames(long_frenemes_kmeans)
+head(long_frenemes_kmeans)
+# table(long_frenemes_kmeans$CLUSTER)
+```
+
+```{r}
+# View(long_frenemes_kmeans %>% filter(is.na(CLUSTER)))
+```
+
+
+KeggOrthology_B
+```{r, fig.height=14, fig.width=7}
+long_frenemes_kmeans %>% 
+  filter(!is.na(CLUSTER)) %>% 
+  filter(!is.na(KeggOrthology_A)) %>% 
+  group_by(CLUSTER, KeggOrthology_A, KeggOrthology_B) %>% 
+  summarise(SUM_TPM = sum(scaledTPM),
+            COUNT_transcript = n()) %>% 
+  ggplot(aes(x = COUNT_transcript, y = KeggOrthology_A)) +
+    geom_bar(stat = "identity", position = "fill", color = "black", (aes(fill = KeggOrthology_B))) +
+  facet_grid(rows = vars(CLUSTER), space = "free", scale = "free") +
+  theme_classic() +
+  theme(legend.position = "bottom")
+
+```
+
+```{r}
+long_frenemes_kmeans_tax <- long_frenemies_annot_tax %>% 
+  unite(SAMPLE_ID, VENT_BIN, VENT_FIELD, LOCATION, sep = "_") %>% 
+  unite(FXN_INFO, KEGG, PFAMs, sep = "_", remove = FALSE) %>% # Does not include taxonomic information
+  filter(FXN_INFO != "-_-") %>% # Remove unannotated
+  separate_longer_delim(KEGG, delim = ",") %>%
+  mutate(KEGG = str_remove_all(KEGG, "ko:")) %>% 
+  left_join(kegg_key) %>% 
+  left_join(kmeans_membership_all_pa) %>% 
+  # Isolate just the kegg ID information
+  select(FXN_INFO, SUPERGROUP_0, CLUSTER, scaledTPM) %>% 
+  distinct()
+  
+colnames(long_frenemes_kmeans_tax)
+head(long_frenemes_kmeans_tax)
+table(long_frenemes_kmeans$CLUSTER)
+```
+
+```{r}
+# View(long_frenemes_kmeans %>% filter(is.na(CLUSTER)))
+```
+
+
+KeggOrthology_B
+```{r, fig.height=8, fig.width=8}
+long_frenemes_kmeans_tax %>% 
+  filter(!is.na(CLUSTER)) %>% 
+  filter(!is.na(SUPERGROUP_0)) %>% 
+  group_by(CLUSTER, SUPERGROUP_0) %>% 
+  summarise(SUM_TPM = sum(scaledTPM),
+            COUNT_transcript = n()) %>% 
+  mutate(SUPERGROUP_0_ORDER = factor(SUPERGROUP_0, levels = SUPERGROUP_0_ordering)) %>%
+  ggplot(aes(x = COUNT_transcript, y = CLUSTER, fill = SUPERGROUP_0_ORDER)) +
+    geom_bar(stat = "identity", position = "fill", width = 0.8) +
+  scale_fill_manual(values = tax_color_metaT) +
+  # facet_grid(rows = vars(CLUSTER), space = "free", scale = "free") +
+  theme_classic() +
+  theme(legend.position = "bottom")
+
+```
+
+
+
+## Vent data
+
+Use vent only data, removing only Mustard Stand, determine outliers.
+
+Find outliers. *Try with all data* Then try with >1 filter
+
+```{r}
 long_outlier <- long_frenemies_annot_tax %>% 
   # filter(scaledTPM > 1) %>% 
   filter(sample_name != "Von Damm_Vent_MustardStand") %>% 
@@ -1847,10 +2572,10 @@ long_outlier <- long_frenemies_annot_tax %>%
   # filter(SUPERGROUP_PHYLUM != "Eukaryota incertae sedis-Unannotated") %>% 
   anomalize::anomalize(scaledTPM, method = c("iqr"), max_anoms = 0.2, alpha = 0.05)
 table(long_outlier$anomaly)
-36036/(439185+36036) # 7.5% outlier
+36036/(439185+36036) # 7.5% transcripts considered outliers
 ```
 
-Replace outliers. k-means should all be by taxa and KEGG + PFAMS. taxa should be full classification and supergroup
+Replace outliers with min and max values identified as non-outliers. 
 
 ```{r}
 wide_kmean_vent_only_0 <- long_frenemies_annot_tax %>% 
@@ -1882,9 +2607,7 @@ wide_kmean_vent_only_0 <- long_frenemies_annot_tax %>%
 dim(wide_kmean_vent_only_0)
 ```
 
-### Pre-processing ahead of k-measn
-
-#### P/A
+### All data: P/A 
 
 ```{r}
 # ?decostand
@@ -1908,15 +2631,17 @@ output_kclusts %>%
     geom_point(size = 2, color = "darkgreen") +
   theme_linedraw()
 ```
+> All data with presence/absence determined to be 11 clusters.
 
-### Continue k-means
+
 ```{r}
 kmeans10_vent_pa <- kmeans(wide_kmean_ventonly_pa, centers = 11)
 
 summary(kmeans10_vent_pa)
-# print(kmeans10_vent_pa)
+print(kmeans10_vent_pa)
 broom::tidy(kmeans10_vent_pa)
 broom::glance(kmeans10_vent_pa)
+
 # Combine with data
 augment_cluster10_vent_pa_3 <- broom::augment(kmeans10_vent_pa, wide_kmean_ventonly_pa)
 
@@ -1926,21 +2651,21 @@ head(df_kmeans_cluster10_vent_pa_3)
 # colnames(df_kmeans_cluster10_all_clr_3)
 ```
 
-```{r, fig.height=4, fig.width=10}
-kmeans_membership_all <- df_kmeans_cluster10_vent_pa_3 %>% 
-  # select(cols = -c(.rownames, .cluster)) %>% 
-  select(FXN_INFO = `.rownames`, CLUSTER = `.cluster`) %>% distinct()
-  # separate(tax, into = c("SUPERGROUP_PHYLUM", "full_classification"), sep = "_") %>% 
-  # select(SUPERGROUP_PHYLUM, KEGG_PFAM, CLUSTER) %>% distinct()
+*Output for all data, P/A, and 11 k-means clusters*: K-means clustering with 11 clusters of sizes 2748, 1814, 933, 1050, 4560, 1668, 1764, 2123, 1464, 1290, 3084
 
-head(kmeans_membership_all)
-table(kmeans_membership_all$CLUSTER)
-# View(kmeans_membership_all %>% filter(CLUSTER == 1))
+
+> Row names are functional definitions and column headers are sample ID.
+
+
+```{r, fig.height=4, fig.width=10}
+kmeans_membership_all_pa <- df_kmeans_cluster10_vent_pa_3 %>% 
+  select(FXN_INFO = `.rownames`, CLUSTER = `.cluster`) %>% distinct()
 ```
-## Visualize k-means output
+
+### All data: Visualize k-means output
 
 ```{r}
-frenemies_all_kmeans <- long_frenemies_annot_tax %>%
+frenemies_all_pa_kmeans <- long_frenemies_annot_tax %>%
   filter(sample_name != "Von Damm_Vent_MustardStand") %>% 
   # filter(VENT_BIN == "Vent") %>% 
   # filter(Domain == "Eukaryota") %>% 
@@ -1949,21 +2674,12 @@ frenemies_all_kmeans <- long_frenemies_annot_tax %>%
   # filter(SUPERGROUP_PHYLUM != "Eukaryota incertae sedis-Unannotated") %>% 
   # unite(SAMPLE_ID, VENT_BIN, VENT_FIELD, LOCATION, sep = "_") %>%
   unite(FXN_INFO, KEGG, PFAMs, sep = "_") %>%
-  left_join(kmeans_membership_all)
+  left_join(kmeans_membership_all_pa)
 
 ```
-
-
-#### Clusters by location
-
-```{r}
-head(frenemies_all_kmeans)
-unique(frenemies_all_kmeans$CLUSTER)
-```
-
 
 ```{r, fig.height=6, fig.width=6}
-frenemies_all_kmeans %>% 
+frenemies_all_pa_kmeans %>% 
   unite(SAMPLE_ID, VENT_FIELD, VENT_BIN, LOCATION, sep = "_") %>%
   filter(!is.na(CLUSTER)) %>% 
   group_by(SAMPLE_ID, CLUSTER) %>% 
@@ -1987,7 +2703,7 @@ frenemies_all_kmeans %>%
   labs(x = "", y = "")
 ```
 ```{r, fig.height=15, fig.width=7}
-frenemies_all_kmeans %>% 
+frenemies_all_pa_kmeans %>% 
   unite(SAMPLE_ID, VENT_FIELD, VENT_BIN, LOCATION, sep = "_") %>%
   filter(!is.na(CLUSTER)) %>% 
   group_by(SUPERGROUP_PHYLUM_CLASS, CLUSTER) %>% 
@@ -1997,17 +2713,15 @@ frenemies_all_kmeans %>%
   ggplot(aes(x = CLUSTER, y = SUPERGROUP_PHYLUM_CLASS, size = TRANSCRIPTS_IN_CLUSTER)) +
     geom_point(stat = "identity", shape = 21)
 ```
-
-```{r}
-
-```
+> Observations: Not a whole lot of differences across clusters. Some absent by taxa and specific samples. 
 
 
 
 
-For each transcript assigned protein ID, they were placed into clusters based on presence/absence. Here, I can plot the breakdown of protein IDs found within each supergroup phylum and see what cluster they belong to. 
 
-Envision a bar plot. X-axis is the number of protein ID transcripts, y-axis is supergrou phylum
+
+
+
 
 
 ## ARCHIVE Heatmap addition plots

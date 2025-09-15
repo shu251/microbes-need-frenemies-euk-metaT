@@ -1,4 +1,5 @@
 # Microbes Need Frenemies
+
 Descriptions and code for metatranscriptome analysis related to project "Microbes need frenemies"
 
 
@@ -19,6 +20,18 @@ python submit/eukrhythmic -np # to generate dry run, ensure everything runs ok.
 # To run
 python submit/eukrhythmic all
 ```
+
+## Files and scripts needed
+
+*Feb 2025* 
+
+1. `scripts/create-samplelist.R`
+2. `scripts/run_tximport_frenemies.R`
+3. `frenemies-compile-dfs_FEB.R`
+`metat-analysis-eukrhythmic.qmd` - explanation of eukrhythmic run.
+`/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/tximport-sept-2024.RData`
+4. 
+
 
 
 ## Local & remote workflow for data analysis
