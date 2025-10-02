@@ -6,8 +6,10 @@ library(data.table)
 
 load(file = "/scratch/group/hu-lab/frenemies/dfs_mcr_mean-only_sept2024.RData")
 
-taxfxn <- read.table("/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/TaxonomicAndFunctionalAnnotations.csv", header = TRUE, sep = "\t")
+taxfxn <- read.table("/scratch/group/hu-lab/frenemies/euk-metaT-eukrhythmic-output/TaxonomicAndFunctionalAnnotations.csv", header = TRUE, sep = "\t", nrows = 100)
 
+tx2gene_in <- taxfxn %>% 
+  dplyr::mutate(SEQ_ID = stringr::str_remove(SequenceID, ".p[:digit:]$"))
 # head(taxfxn)
 # head(mean_mcr_TPM_df)
 

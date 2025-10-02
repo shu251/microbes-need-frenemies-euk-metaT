@@ -1365,6 +1365,7 @@ sample_order_alpha <- sort(colnames(data.frame(clr_wide_frenemies_ciliate)))
 # ?sort()
 label_sample_order <- c("Candelabra GR", "Mt. Edwards GR", "SirVentsAlot GR", "Venti Latte GR", "LotsOShrimp P", "Shrimpocalypse P", "Arrow Loop VD", "Bartizan VD", "Old Man Tree VD", "Ravelin #2 VD", "Shrimp Hole VD", "White Castle VD", "X18 VD")
 
+# head(data.frame(clr_wide_frenemies_ciliate))
 ```
 
 
@@ -1524,18 +1525,347 @@ order_tax <- as.character(frenemies_dino_rich$CLASS)
     strip.text = element_blank(),
     strip.background = element_blank()) +
   labs(x = "", y = "")) + patchwork::plot_layout(nrow = 1)
-
+# head(long_frenemies_annot_tax)
 ```
 
 
 # Kegg category for taxonomic groups
 
+Try a comparison of overall vent to non-vent
 ```{r}
-# head(kegg_seq_id)
+carb_lipid_df <- long_frenemies_annot_tax %>%
+  filter(sample_name != "Von Damm_Vent_MustardStand") %>% 
+  filter(Domain == "Eukaryota") %>% 
+  filter(Supergroup != "Opisthokonta") %>%
+  filter(SUPERGROUP_PHYLUM != "Eukaryote-Unannotated") %>% 
+  filter(SUPERGROUP_PHYLUM != "Eukaryota incertae sedis-Unannotated") %>% 
+  select(SEQ_ID, VENT_BIN, SUPERGROUP_PHYLUM, Supergroup, Phylum, Class, Order, SUPERGROUP_PHYLUM_CLASS, VENT_FIELD_ORDER, scaledTPM) %>% distinct() %>% 
+  left_join(kegg_seq_id, by = c("SEQ_ID")) %>% 
+  filter(B == "Carbohydrate and lipid metabolism")
+
+head(carb_lipid_df)
+# View(carb_lipid_df %>% select(C, D) %>% distinct())
+# unique(carb_lipid_df$)
+table(carb_lipid_df$C)
+# unique(carb_lipid_df$SUPERGROUP_PHYLUM)
+
+c_colors <- c("#2d88c9", "#8e9ba6", "#f6cc5e","#0f3e6d", "#ffded6",
+              "#5bb648","#d4b387", "#c8acbd","#368989","#dd8798")
+```
+
+* Terpenoids are a series of C backbone structures that contribute to larger sterols or carotenoids. All terpenoids derive from a 5-carbon building c block, either "isopentenyl diphosphate" (IDP) or "dimethylallyl diphoshate" (DMADP). Acetyl-CoA is a key substrate that helps create these in a cell, and an isomerase works to further transform it. Common pathway - mevalonate (MEP pathway)
+
+```{r, fig.width=30, fig.height=7}
+library(ggtree)
+
+carb_lipid_df %>% 
+  # Select items of interest, remove duplication
+  select(VENT_BIN, Supergroup, SUPERGROUP_PHYLUM, C, KEGG, scaledTPM) %>% distinct() %>% 
+  filter(grepl("Alveolata", SUPERGROUP_PHYLUM) |
+         grepl("Excavata", SUPERGROUP_PHYLUM) |
+         grepl("Stramenopiles", SUPERGROUP_PHYLUM) |
+         grepl("Hacrobia", SUPERGROUP_PHYLUM) |
+         grepl("Rhizaria", SUPERGROUP_PHYLUM)) %>% 
+  filter(!(grepl("-Unannotated", SUPERGROUP_PHYLUM))) %>% 
+  group_by(VENT_BIN, SUPERGROUP_PHYLUM, Supergroup, C) %>% 
+    summarize(gene_count = n(),
+              sum_tpm = sum(scaledTPM)) %>% 
+  ggplot(aes(area = sum_tpm, fill = C, size = 3)) +
+  geom_treemap(color = "white") +
+  facet_wrap(Supergroup + SUPERGROUP_PHYLUM ~ VENT_BIN, dir = "v", nrow = 2) +
+  theme_linedraw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, face = "bold", size = 12),
+        strip.background = element_blank(), strip.text = element_text(color = "black", face = "bold", vjust = 0.5, hjust = 0, size = 12),
+        legend.position = "right",
+        legend.title = element_blank(),
+        legend.text = element_text(color = "black", size = 12),
+        panel.border = element_blank(),
+        axis.title = element_text(face = "bold", size = 12)) +
+  scale_y_continuous(expand = c(0,0)) +
+  scale_fill_manual(values = c_colors) +
+  labs(x = "", y = "Sequence proportion by Supergroup")
+```
+> Observations: Major non-venet to vent differences include, central carbohydrate metabolism, "other" carbohydrate metabolism, and fatty acid. 
+* Many trends show increased central carbohydrate metabolism for the vent signature and fatty acid metabolism increase for non0vent. 
+* One take home remains that there are clearly distinct strategies these taxa take within the vent sites compared to outside. 
+
+```{r}
+unique(carb_lipid_df$SUPERGROUP_PHYLUM)
+```
+
+
+```{r, fig.height=6, fig.width=6}
+carb_lipid_df %>% 
+  # Select items of interest, remove duplication
+  select(VENT_BIN, Supergroup, SUPERGROUP_PHYLUM, C, KEGG, scaledTPM) %>% distinct() %>% 
+  filter(grepl("Alveolata", SUPERGROUP_PHYLUM) |
+         grepl("Excavata", SUPERGROUP_PHYLUM) |
+         grepl("Stramenopiles", SUPERGROUP_PHYLUM) |
+         grepl("Hacrobia", SUPERGROUP_PHYLUM) |
+         grepl("Rhizaria", SUPERGROUP_PHYLUM)) %>% 
+  filter(!(grepl("-Unannotated", SUPERGROUP_PHYLUM))) %>% 
+  filter(SUPERGROUP_PHYLUM == "Alveolata-Ciliophora") %>% 
+  group_by(VENT_BIN, SUPERGROUP_PHYLUM, Supergroup, C) %>% 
+    summarize(gene_count = n(),
+              sum_tpm = sum(scaledTPM)) %>% 
+  ggplot(aes(area = sum_tpm, fill = C)) +
+  geom_treemap(color = "white", size = 3) +
+  facet_wrap(Supergroup + SUPERGROUP_PHYLUM ~ VENT_BIN, dir = "v", nrow = 4) +
+  theme_linedraw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, face = "bold", size = 12),
+        strip.background = element_blank(), strip.text = element_text(color = "black", face = "bold", vjust = 0.5, hjust = 0, size = 12),
+        legend.position = "right",
+        legend.title = element_blank(),
+        legend.text = element_text(color = "black", size = 12),
+        panel.border = element_blank(),
+        axis.title = element_text(face = "bold", size = 12)) +
+  scale_y_continuous(expand = c(0,0)) +
+  scale_fill_manual(values = c_colors) +
+  labs(x = "", y = "Sequence proportion by Supergroup")
 ```
 
 ```{r}
-head(long_frenemies_annot_tax)
+# View(carb_lipid_df %>% filter(C == "Central carbohydrate metabolism"))
+```
+
+
+
+```{r, fig.width=15, fig.height=11}
+library(ggtree)
+
+carb_lipid_df %>% 
+  # Select items of interest, remove duplication
+  select(VENT_BIN, Supergroup, SUPERGROUP_PHYLUM, C, KEGG, scaledTPM) %>% distinct() %>% 
+  filter(grepl("Alveolata", SUPERGROUP_PHYLUM) |
+         # grepl("Excavata", SUPERGROUP_PHYLUM) |
+         grepl("Stramenopiles", SUPERGROUP_PHYLUM) |
+         # grepl("Hacrobia", SUPERGROUP_PHYLUM) |
+         grepl("Rhizaria", SUPERGROUP_PHYLUM)) %>% 
+  filter(!(grepl("-Unannotated", SUPERGROUP_PHYLUM))) %>% 
+  
+  group_by(VENT_BIN, SUPERGROUP_PHYLUM, Supergroup, C) %>% 
+    summarize(gene_count = n(),
+              sum_tpm = sum(scaledTPM)) %>% 
+  ggplot(aes(area = sum_tpm, fill = C)) +
+  geom_treemap(color = "white", size = 3) +
+  facet_wrap(Supergroup + SUPERGROUP_PHYLUM ~ VENT_BIN, dir = "v", nrow = 4) +
+  theme_linedraw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, face = "bold", size = 12),
+        strip.background = element_blank(), strip.text = element_text(color = "black", face = "bold", vjust = 0.5, hjust = 0, size = 12),
+        legend.position = "right",
+        legend.title = element_blank(),
+        legend.text = element_text(color = "black", size = 12),
+        panel.border = element_blank(),
+        axis.title = element_text(face = "bold", size = 12)) +
+  scale_y_continuous(expand = c(0,0)) +
+  scale_fill_manual(values = c_colors) +
+  labs(x = "", y = "Sequence proportion by Supergroup")
+```
+
+
+Isolate ciliates, syndiniales, cercozoa
+```{r, fig.width=18, fig.height=9}
+
+subset <- c("Alveolata-Ciliophora", "Alveolata-Syndiniales", "Rhizaria-Cercozoa")
+
+carb_lipid_df %>% 
+  # Select items of interest, remove duplication
+  select(VENT_BIN, Supergroup, SUPERGROUP_PHYLUM, Phylum, Class, Order, C, D, Gene_identification, KEGG, scaledTPM) %>% distinct() %>% 
+  filter(grepl("Alveolata", SUPERGROUP_PHYLUM) |
+         grepl("Excavata", SUPERGROUP_PHYLUM) |
+         grepl("Stramenopiles", SUPERGROUP_PHYLUM) |
+         grepl("Hacrobia", SUPERGROUP_PHYLUM) |
+         grepl("Rhizaria", SUPERGROUP_PHYLUM)) %>% 
+  filter(!(grepl("-Unannotated", SUPERGROUP_PHYLUM))) %>% 
+  # filter(SUPERGROUP_PHYLUM %in% subset) %>% 
+  group_by(VENT_BIN, SUPERGROUP_PHYLUM, C, D, Gene_identification) %>% 
+    summarize(gene_count = n(),
+              sum_tpm = sum(scaledTPM)) %>% 
+  filter(C == "Central carbohydrate metabolism") %>% 
+  # filter(!(is.na(Class))) %>% 
+  ggplot(aes(x = Gene_identification, y = SUPERGROUP_PHYLUM, fill = log(sum_tpm))) +
+  geom_tile(color = "black") +
+  facet_grid(cols = vars(D), rows = vars(VENT_BIN),
+             scales = "free", space = "free", switch = "both") +
+  scale_fill_fermenter(type = "seq", palette = 5, direction = 1) +
+  scale_x_discrete(position = "top") +
+  scale_y_discrete(position = "right") +
+  theme_classic() +
+  theme(legend.title = element_blank(),
+        legend.position = "right",
+        # axis.line = element_blank(),
+        axis.ticks = element_blank(),
+        axis.text.x = element_blank(),
+    # axis.text.x = element_text(angle = 90, color = "black", hjust = 0, vjust = 0),
+    axis.text.y = element_text(color = "black"),
+    panel.background = element_rect(color = "grey20"),
+    strip.text = element_text(angle = 90, color = "black", hjust = 1, vjust = 0.5),
+    strip.background = element_blank()) +
+  labs(x = "", y = "")
+```
+
+```{r}
+head(carb_lipid_df)
+# View(carb_lipid_df %>% filter(C == "Central carbohydrate metabolism") %>% select(D) %>% distinct())
+```
+
+```{r}
+close_up <- c("	
+Citrate cycle, first carbon oxidation, oxaloacetate => 2-oxoglutarate", "Citrate cycle, second carbon oxidation, 2-oxoglutarate => oxaloacetate",
+)
+```
+```{r}
+head(carb_lipid_df)
+```
+
+
+Isolate ciliates, syndiniales, cercozoa
+```{r, fig.width=8, fig.height=9}
+
+subset <- c("Alveolata-Ciliophora", "Alveolata-Syndiniales", "Rhizaria-Cercozoa")
+
+carb_lipid_df %>% 
+  # Select items of interest, remove duplication
+  select(VENT_BIN, SUPERGROUP_PHYLUM, SUPERGROUP_PHYLUM_CLASS, Class,C, D, Gene_identification, KEGG, scaledTPM) %>% distinct() %>% 
+  filter(grepl("Alveolata", SUPERGROUP_PHYLUM) |
+         grepl("Excavata", SUPERGROUP_PHYLUM) |
+         grepl("Stramenopiles", SUPERGROUP_PHYLUM) |
+         grepl("Hacrobia", SUPERGROUP_PHYLUM) |
+         grepl("Rhizaria", SUPERGROUP_PHYLUM)) %>% 
+  filter(!(grepl("-Unannotated", SUPERGROUP_PHYLUM))) %>% 
+  filter(SUPERGROUP_PHYLUM %in% subset) %>% 
+  group_by(VENT_BIN, SUPERGROUP_PHYLUM, Class, C, D, Gene_identification) %>% 
+    summarize(gene_count = n(),
+              sum_tpm = sum(scaledTPM)) %>% 
+  filter(C == "Central carbohydrate metabolism") %>% 
+  filter(D != "Pentose phosphate pathway, archaea, fructose 6P => ribose 5P" &
+           D != "Citrate cycle (TCA cycle, Krebs cycle)" &
+           !(grepl("Entner-Doudoroff", D)) &
+  D != "Pentose phosphate pathway, non-oxidative phase, fructose 6P => ribose 5P" &
+  D != "Pentose phosphate pathway, oxidative phase, glucose 6P => ribulose 5P" &
+    D != "PRPP biosynthesis, ribose 5P => PRPP") %>% 
+  # Alter gene ids
+  separate(Gene_identification, into = c("gene_tmp", "excess"), sep = ";") %>% 
+  mutate(GENE = str_remove_all(gene_tmp, "E(\\d)\\.(\\d)\\.(\\d)\\.(\\d), ")) %>% 
+  filter(!is.na(Class)) %>% 
+  filter(SUPERGROUP_PHYLUM == "Alveolata-Ciliophora") %>% 
+  ggplot(aes(x = Class, y = GENE, fill = log(sum_tpm))) +
+  geom_tile(color = "grey50") +
+  facet_grid(rows = vars(D), cols = vars(VENT_BIN),
+             scales = "free", space = "free", switch = "x") +
+  scale_fill_fermenter(type = "seq", palette = 5, direction = 1) +
+  scale_x_discrete(position = "top") +
+  # scale_y_discrete(position = "right") +
+  theme_classic() +
+  theme(legend.title = element_blank(),
+        legend.position = "right",
+        # axis.line = element_blank(),
+        axis.ticks = element_blank(),
+    axis.text.x = element_text(angle = 90, size = 8, color = "black", hjust = 0, vjust = 0),
+    axis.text.y = element_text(color = "black", size = 8),
+    panel.background = element_rect(color = "grey20"),
+    strip.text.x = element_text(angle = 0, color = "black", size = 8, hjust = 1, vjust = 0.5),
+    strip.text.y = element_text(angle = 0, color = "black", size = 8, hjust = 1, vjust = 0.5),
+    strip.background = element_blank()) +
+  labs(x = "", y = "")
+```
+
+1. Compare first vs. second part of TCA cycle
+2. Glycolysis upregular, higher availability of organic carbon, microbes are more focused on breaking down sugars and materials, likely this means microbes are in rapi growth, respiration, fermnetation. vs. gluconeogenesis --> it means microves are relying on Non-carbohydrate sources for glucose and other downstream intermedates, Therefore it could be carbon availability is lower, they are trying to conserve energy.. maybe they are understress. 
+
+```{r}
+carb_lipid_df %>% 
+  # Select items of interest, remove duplication
+  select(VENT_BIN, SUPERGROUP_PHYLUM, SUPERGROUP_PHYLUM_CLASS, Class,C, D, Gene_identification, KEGG, scaledTPM) %>% distinct() %>% 
+  filter(grepl("Alveolata", SUPERGROUP_PHYLUM) |
+         grepl("Excavata", SUPERGROUP_PHYLUM) |
+         grepl("Stramenopiles", SUPERGROUP_PHYLUM) |
+         grepl("Hacrobia", SUPERGROUP_PHYLUM) |
+         grepl("Rhizaria", SUPERGROUP_PHYLUM)) %>% 
+  filter(!(grepl("-Unannotated", SUPERGROUP_PHYLUM))) %>% 
+  filter(SUPERGROUP_PHYLUM %in% subset) %>% 
+  group_by(VENT_BIN, SUPERGROUP_PHYLUM, Class, C, D, Gene_identification) %>% 
+    summarize(gene_count = n(),
+              sum_tpm = sum(scaledTPM)) %>% 
+  # filter(C == "Lipid metabolism") %>% 
+  # filter(D != "Pentose phosphate pathway, archaea, fructose 6P => ribose 5P" &
+  #          D != "Citrate cycle (TCA cycle, Krebs cycle)" &
+  #          !(grepl("Entner-Doudoroff", D)) &
+  # D != "Pentose phosphate pathway, non-oxidative phase, fructose 6P => ribose 5P" &
+  # D != "Pentose phosphate pathway, oxidative phase, glucose 6P => ribulose 5P" &
+  #   D != "PRPP biosynthesis, ribose 5P => PRPP") %>% 
+  # Alter gene ids
+  separate(Gene_identification, into = c("gene_tmp", "excess"), sep = ";") %>% 
+  mutate(GENE = str_remove_all(gene_tmp, "E(\\d)\\.(\\d)\\.(\\d)\\.(\\d), ")) %>% 
+  filter(!is.na(Class)) %>% 
+  # filter(SUPERGROUP_PHYLUM == "Alveolata-Ciliophora") %>% 
+  ggplot(aes(x = Class, y = GENE, fill = log(sum_tpm))) +
+  geom_tile(color = "grey50") +
+  facet_grid(rows = vars(D), cols = vars(VENT_BIN),
+             scales = "free", space = "free", switch = "x") +
+  scale_fill_fermenter(type = "seq", palette = 5, direction = 1) +
+  scale_x_discrete(position = "top") +
+  # scale_y_discrete(position = "right") +
+  theme_classic() +
+  theme(legend.title = element_blank(),
+        legend.position = "right",
+        # axis.line = element_blank(),
+        axis.ticks = element_blank(),
+    axis.text.x = element_text(angle = 90, size = 8, color = "black", hjust = 0, vjust = 0),
+    axis.text.y = element_text(color = "black", size = 8),
+    panel.background = element_rect(color = "grey20"),
+    strip.text.x = element_text(angle = 0, color = "black", size = 8, hjust = 1, vjust = 0.5),
+    strip.text.y = element_text(angle = 0, color = "black", size = 8, hjust = 1, vjust = 0.5),
+    strip.background = element_blank()) +
+  labs(x = "", y = "")
+```
+
+```{r}
+unique(carb_lipid_df$CLASSIFICATION_BROAD)
+```
+
+```{r, fig.height=11, fig.width=10}
+carb_lipid_df %>% 
+  # Select items of interest, remove duplication
+  select(VENT_BIN, SUPERGROUP_PHYLUM, SUPERGROUP_PHYLUM_CLASS, Class,C, D, Gene_identification, KEGG, scaledTPM, CLASSIFICATION_BROAD) %>% distinct() %>% 
+  filter(grepl("Alveolata", SUPERGROUP_PHYLUM) |
+         grepl("Excavata", SUPERGROUP_PHYLUM) |
+         grepl("Stramenopiles", SUPERGROUP_PHYLUM) |
+         grepl("Hacrobia", SUPERGROUP_PHYLUM) |
+         grepl("Rhizaria", SUPERGROUP_PHYLUM)) %>% 
+  filter(!(grepl("-Unannotated", SUPERGROUP_PHYLUM))) %>% 
+  filter(SUPERGROUP_PHYLUM %in% subset) %>% 
+  group_by(VENT_BIN, SUPERGROUP_PHYLUM, Class, C, D, Gene_identification, CLASSIFICATION_BROAD) %>% 
+    summarize(gene_count = n(),
+              sum_tpm = sum(scaledTPM)) %>% 
+  filter(CLASSIFICATION_BROAD == "Phagotrophy") %>% 
+  separate(Gene_identification, into = c("gene_tmp", "excess"), sep = ";") %>% 
+  mutate(GENE = str_remove_all(gene_tmp, "E(\\d)\\.(\\d)\\.(\\d)\\.(\\d), ")) %>% 
+  filter(!is.na(Class)) %>% 
+  # filter(SUPERGROUP_PHYLUM == "Alveolata-Ciliophora") %>% 
+  ggplot(aes(x = Class, y = GENE, fill = log(sum_tpm))) +
+  geom_tile(color = "grey50") +
+  facet_grid(rows = vars(D), cols = vars(VENT_BIN),
+             scales = "free", space = "free", switch = "x") +
+  scale_fill_fermenter(type = "seq", palette = 5, direction = 1) +
+  scale_x_discrete(position = "top") +
+  # scale_y_discrete(position = "right") +
+  theme_classic() +
+  theme(legend.title = element_blank(),
+        legend.position = "right",
+        # axis.line = element_blank(),
+        axis.ticks = element_blank(),
+    axis.text.x = element_text(angle = 90, size = 8, color = "black", hjust = 0, vjust = 0),
+    axis.text.y = element_text(color = "black", size = 8),
+    panel.background = element_rect(color = "grey20"),
+    strip.text.x = element_text(angle = 0, color = "black", size = 8, hjust = 1, vjust = 0.5),
+    strip.text.y = element_text(angle = 0, color = "black", size = 8, hjust = 1, vjust = 0.5),
+    strip.background = element_blank()) +
+  labs(x = "", y = "")
+```
+
+```{r}
+# head(long_frenemies_annot_tax)
 kegg_tax_vent <- long_frenemies_annot_tax %>%
   filter(sample_name != "Von Damm_Vent_MustardStand") %>% 
   filter(VENT_BIN == "Vent") %>% 
@@ -1548,6 +1878,7 @@ kegg_tax_vent <- long_frenemies_annot_tax %>%
 head(kegg_tax_vent)
 # unique(kegg_tax_vent$KeggOrthology_A)
 ```
+
 
 
 ```{r, fig.height=13, fig.width=14}
